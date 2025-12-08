@@ -1,224 +1,191 @@
-# Yatra Complete Docker Setup Guide
+# 🐳 Complete Docker Setup - All Services in One Repo
 
-This guide explains how to build and deploy all three Yatra services (Backend, Frontend, Admin) together using Docker.
+## Overview
 
-## 📦 Services Included
+This repository contains **three services** that can be built and deployed together:
 
-1. **Backend API** - Node.js Express server (Port 3000)
-2. **Frontend Website** - Main Yatra website (Port 80)
-3. **Admin Panel** - Admin dashboard (Port 8080)
-4. **MySQL Database** - Database server (Port 3306)
+1. **yatra-backend** - Node.js API server
+2. **yatra-frontend** - Main website (Nginx)
+3. **yatra-admin-frontend** - Admin panel (Nginx)
 
-## 🚀 Quick Start
+## 🎯 Quick Start
 
-### 1. Build All Images
+### Build and Push to Docker Hub (One Command)
+
+**Windows:**
+```batch
+build-and-push.bat
+```
 
 **Linux/Mac:**
 ```bash
-chmod +x build-all-docker.sh
-./build-all-docker.sh
+./build-and-push.sh
 ```
 
-**Windows:**
-```cmd
-build-all-docker.bat
-```
+This script will:
+- ✅ Build all three Docker images
+- ✅ Tag them with `latest` and version tags
+- ✅ Push to Docker Hub (optional)
 
-**With Docker Hub Push:**
-```bash
-./build-all-docker.sh --push
-# or
-build-all-docker.bat --push
-```
-
-### 2. Start All Services
+### Run Locally
 
 ```bash
 docker-compose -f docker-compose.all.yml up -d
 ```
 
-### 3. View Logs
+Access:
+- Frontend: http://localhost:80
+- Admin: http://localhost:8080
+- Backend API: http://localhost:3000
 
-```bash
-# All services
-docker-compose -f docker-compose.all.yml logs -f
+## 📋 Step-by-Step Guide
 
-# Specific service
-docker-compose -f docker-compose.all.yml logs -f backend
-docker-compose -f docker-compose.all.yml logs -f frontend
-docker-compose -f docker-compose.all.yml logs -f admin
+### Step 1: Configure Docker Hub Username
+
+Edit `build-and-push.bat` (or `.sh` for Linux):
+```batch
+set DOCKER_USERNAME=yourusername
 ```
 
-### 4. Stop All Services
-
-```bash
-docker-compose -f docker-compose.all.yml down
-```
-
-## 🔧 Configuration
-
-### Environment Variables
-
-Create a `.env` file in the root directory:
-
-```env
-# Database
-DB_USER=yatra_user
-DB_PASSWORD=your_secure_password
-DB_NAME=yatra_db
-
-# Backend
-JWT_SECRET=your_jwt_secret_key
-CORS_ORIGIN=http://localhost:80,http://localhost:8080
-NODE_ENV=production
-
-# Docker Hub (for pushing images)
-DOCKER_USERNAME=your_dockerhub_username
-```
-
-### Ports
-
-- **Frontend**: http://localhost:80
-- **Admin Panel**: http://localhost:8080
-- **Backend API**: http://localhost:3000
-- **MySQL**: localhost:3306
-
-## 📤 Push to Docker Hub
-
-### Set Docker Username
-
-**Linux/Mac:**
-```bash
-export DOCKER_USERNAME=your_username
-./build-all-docker.sh --push
-```
-
-**Windows:**
-```cmd
-set DOCKER_USERNAME=your_username
-build-all-docker.bat --push
-```
-
-### Login to Docker Hub
+### Step 2: Login to Docker Hub
 
 ```bash
 docker login
 ```
 
-Then run the build script with `--push` flag.
+### Step 3: Build and Push
 
-## 🏗️ Build Individual Services
+Run the build script - it will build all three images and optionally push them.
 
-If you need to rebuild just one service:
+### Step 4: Deploy
 
+**Option A: Build from source (development)**
 ```bash
-# Backend only
-cd yatra-backend
-docker build -t your_username/yatra-backend:latest .
-cd ..
-
-# Frontend only
-cd yatra-frontend
-docker build -t your_username/yatra-frontend:latest .
-cd ..
-
-# Admin only
-cd yatra-admin-frontend
-docker build -t your_username/yatra-admin:latest .
-cd ..
+docker-compose -f docker-compose.all.yml up -d
 ```
 
-## 🔍 Verify Services
-
-Check if all services are running:
-
+**Option B: Pull from Docker Hub (production)**
+1. Update `docker-compose.prod.yml` with your Docker Hub username
+2. Run:
 ```bash
-docker-compose -f docker-compose.all.yml ps
-```
-
-Health checks:
-- Backend: http://localhost:3000/health
-- Frontend: http://localhost/
-- Admin: http://localhost:8080/
-
-## 🐛 Troubleshooting
-
-### Services won't start
-
-1. Check logs:
-   ```bash
-   docker-compose -f docker-compose.all.yml logs
-   ```
-
-2. Verify ports aren't in use:
-   ```bash
-   # Linux/Mac
-   lsof -i :80 -i :3000 -i :8080 -i :3306
-   
-   # Windows
-   netstat -ano | findstr :80
-   netstat -ano | findstr :3000
-   ```
-
-### Database connection issues
-
-1. Wait for MySQL to be healthy:
-   ```bash
-   docker-compose -f docker-compose.all.yml ps mysql
-   ```
-
-2. Check database logs:
-   ```bash
-   docker-compose -f docker-compose.all.yml logs mysql
-   ```
-
-### Rebuild after code changes
-
-```bash
-# Rebuild specific service
-docker-compose -f docker-compose.all.yml build backend
-
-# Rebuild all
-docker-compose -f docker-compose.all.yml build
-
-# Rebuild and restart
-docker-compose -f docker-compose.all.yml up -d --build
-```
-
-## 📊 Production Deployment
-
-For production, use `docker-compose.prod.yml`:
-
-```bash
+docker-compose -f docker-compose.prod.yml pull
 docker-compose -f docker-compose.prod.yml up -d
 ```
 
-Make sure to:
-1. Set strong passwords in `.env`
-2. Use proper CORS_ORIGIN with your domain
-3. Set NODE_ENV=production
-4. Use Docker secrets for sensitive data
+## 📁 Repository Structure
 
-## 🗑️ Clean Up
-
-Remove all containers and volumes:
-
-```bash
-docker-compose -f docker-compose.all.yml down -v
+```
+YATRA/
+├── yatra-backend/
+│   ├── Dockerfile          # Backend container config
+│   ├── package.json
+│   └── server.js
+├── yatra-frontend/
+│   ├── Dockerfile          # Frontend container config
+│   ├── index.html
+│   └── api-integration.js
+├── yatra-admin-frontend/
+│   ├── Dockerfile          # Admin container config
+│   ├── index.html
+│   └── api-integration.js
+├── docker-compose.all.yml  # Complete stack (builds from source)
+├── docker-compose.prod.yml # Production (pulls from Docker Hub)
+└── build-and-push.bat      # Build & push script
 ```
 
-Remove all images:
+## 🔧 Manual Build (If Needed)
 
+### Backend
 ```bash
-docker rmi your_username/yatra-backend:latest
-docker rmi your_username/yatra-frontend:latest
-docker rmi your_username/yatra-admin:latest
+cd yatra-backend
+docker build -t yourusername/yatra-backend:latest .
+docker push yourusername/yatra-backend:latest
 ```
 
-## 📝 Notes
+### Frontend
+```bash
+cd yatra-frontend
+docker build -t yourusername/yatra-frontend:latest .
+docker push yourusername/yatra-frontend:latest
+```
 
-- All services share the same Docker network (`yatra-network`)
-- Backend connects to MySQL using service name `mysql`
-- Frontend and Admin connect to Backend using service name `backend`
-- Database data persists in Docker volume `mysql_data`
+### Admin
+```bash
+cd yatra-admin-frontend
+docker build -t yourusername/yatra-admin:latest .
+docker push yourusername/yatra-admin:latest
+```
 
+## 🌐 Production Deployment
+
+### On Your Server
+
+1. **Clone repository:**
+```bash
+git clone https://github.com/yourusername/Yatra.git
+cd Yatra
+```
+
+2. **Create `.env` file:**
+```env
+DB_PASSWORD=secure_password_here
+DB_USER=yatra_user
+DB_NAME=yatra_db
+JWT_SECRET=your_jwt_secret_min_32_chars
+CORS_ORIGIN=https://yourdomain.com
+```
+
+3. **Update `docker-compose.prod.yml`** with your Docker Hub username
+
+4. **Deploy:**
+```bash
+docker-compose -f docker-compose.prod.yml pull
+docker-compose -f docker-compose.prod.yml up -d
+```
+
+## 🔍 Verify Deployment
+
+```bash
+# Check running containers
+docker ps
+
+# Check logs
+docker-compose -f docker-compose.all.yml logs -f
+
+# Test endpoints
+curl http://localhost:3000/health  # Backend
+curl http://localhost:80            # Frontend
+curl http://localhost:8080         # Admin
+```
+
+## 📦 Docker Hub Images
+
+After pushing, your images will be at:
+- `https://hub.docker.com/r/yourusername/yatra-backend`
+- `https://hub.docker.com/r/yourusername/yatra-frontend`
+- `https://hub.docker.com/r/yourusername/yatra-admin`
+
+## 🔄 Update Process
+
+1. **Make changes** to your code
+2. **Commit and push** to GitHub
+3. **Rebuild and push** Docker images:
+   ```bash
+   build-and-push.bat
+   ```
+4. **On server, pull and restart:**
+   ```bash
+   docker-compose -f docker-compose.prod.yml pull
+   docker-compose -f docker-compose.prod.yml up -d
+   ```
+
+## 🛑 Stop Services
+
+```bash
+docker-compose -f docker-compose.all.yml down
+```
+
+## 📚 More Information
+
+- Full guide: `DOCKER_DEPLOYMENT_GUIDE.md`
+- Quick reference: `QUICK_DOCKER_DEPLOY.md`

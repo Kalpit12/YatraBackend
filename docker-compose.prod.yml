@@ -1,17 +1,25 @@
 version: '3.8'
 
+# Production Docker Compose - Uses Docker Hub Images
+# Usage: docker-compose -f docker-compose.prod.yml up -d
+# 
+# Before using, update the image names with your Docker Hub username:
+# Replace 'yourusername' with your actual Docker Hub username
+
 services:
   # MySQL Database
   mysql:
     image: mysql:8.0
-    container_name: yatra-mysql-prod
+    container_name: yatra-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-changeme}
       MYSQL_DATABASE: ${DB_NAME:-yatra_db}
       MYSQL_USER: ${DB_USER:-yatra_user}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-changeme}
+    ports:
+      - "3306:3306"
     volumes:
-      - mysql_data_prod:/var/lib/mysql
+      - mysql_data:/var/lib/mysql
       - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
@@ -20,67 +28,69 @@ services:
       retries: 5
     networks:
       - yatra-network
-    restart: always
-    # Remove ports in production - only expose internally
-    # ports:
-    #   - "3306:3306"
+    restart: unless-stopped
 
-  # Backend API Server
+  # Backend API Server (from Docker Hub)
   backend:
-    image: ${DOCKER_USERNAME:-yourusername}/yatra-backend:latest
-    container_name: yatra-backend-prod
+    image: yourusername/yatra-backend:latest  # CHANGE THIS!
+    container_name: yatra-backend
     environment:
       DB_HOST: mysql
       DB_USER: ${DB_USER:-yatra_user}
-      DB_PASSWORD: ${DB_PASSWORD}
+      DB_PASSWORD: ${DB_PASSWORD:-changeme}
       DB_NAME: ${DB_NAME:-yatra_db}
       DB_PORT: 3306
       PORT: 3000
-      NODE_ENV: production
-      JWT_SECRET: ${JWT_SECRET}
-      CORS_ORIGIN: ${CORS_ORIGIN}
+      NODE_ENV: ${NODE_ENV:-production}
+      JWT_SECRET: ${JWT_SECRET:-change-this-secret-key}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:80,http://localhost:8080}
     ports:
-      - "${BACKEND_PORT:-3000}:3000"
+      - "3000:3000"
     depends_on:
       mysql:
         condition: service_healthy
     networks:
       - yatra-network
-    restart: always
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
-  # Frontend Website
+  # Frontend Website (from Docker Hub)
   frontend:
-    image: ${DOCKER_USERNAME:-yourusername}/yatra-frontend:latest
-    container_name: yatra-frontend-prod
+    image: yourusername/yatra-frontend:latest  # CHANGE THIS!
+    container_name: yatra-frontend
     ports:
-      - "${FRONTEND_PORT:-80}:80"
+      - "80:80"
     depends_on:
       - backend
     networks:
       - yatra-network
-    restart: always
+    restart: unless-stopped
     environment:
       - API_URL=http://backend:3000
 
-  # Admin Panel
+  # Admin Panel (from Docker Hub)
   admin:
-    image: ${DOCKER_USERNAME:-yourusername}/yatra-admin:latest
-    container_name: yatra-admin-prod
+    image: yourusername/yatra-admin:latest  # CHANGE THIS!
+    container_name: yatra-admin
     ports:
-      - "${ADMIN_PORT:-8080}:80"
+      - "8080:80"
     depends_on:
       - backend
     networks:
       - yatra-network
-    restart: always
+    restart: unless-stopped
     environment:
       - API_URL=http://backend:3000
 
 volumes:
-  mysql_data_prod:
+  mysql_data:
     driver: local
 
 networks:
   yatra-network:
     driver: bridge
-

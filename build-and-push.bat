@@ -2,7 +2,7 @@
 REM Yatra Docker Build and Push Script for Windows
 REM Replace 'yourusername' with your Docker Hub username
 
-set DOCKER_USERNAME=kalpitpatel12
+set DOCKER_USERNAME=yourusername
 set VERSION=v1.0
 
 echo 🐳 Building Yatra Docker Images...
