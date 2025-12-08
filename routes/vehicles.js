@@ -79,13 +79,20 @@ router.post('/', async (req, res) => {
         } = req.body;
 
         // Basic validation to avoid DB errors and return clear message
-        if (!name || !type || !capacity || !regNo) {
+        if (!name || !type || capacity === undefined || capacity === null) {
             return res.status(400).json({
-                error: 'Missing required fields: name, type, capacity, regNo'
+                error: 'Missing required fields: name, type, capacity'
             });
         }
 
-        const safeCapacity = Number.isFinite(Number(capacity)) ? Number(capacity) : null;
+        const parsedCapacity = Number(capacity);
+        if (!Number.isFinite(parsedCapacity) || parsedCapacity <= 0) {
+            return res.status(400).json({
+                error: 'Capacity must be a positive number'
+            });
+        }
+
+        const safeCapacity = parsedCapacity;
         const result = await query(
             `
             INSERT INTO vehicles (
