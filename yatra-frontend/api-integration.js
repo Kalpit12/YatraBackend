@@ -5,25 +5,16 @@
 
 // API Configuration
 // For local development: 'http://localhost:3000/api'
-// For production: Replace with your deployed backend URL, e.g., 'https://your-backend.railway.app/api'
+// Production: Railway backend URL
 // If no backend: The app will automatically fall back to localStorage
 const API_BASE = (() => {
     // Auto-detect: if running on localhost, use localhost API, otherwise use production API
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
         return 'http://localhost:3000/api';
     }
-    
-    // For aksharjobs.com domain, use the backend API
-    // Option 1: If backend is at aksharjobs.com/api (same domain)
-    if (window.location.hostname === 'aksharjobs.com' || window.location.hostname.includes('aksharjobs.com')) {
-        // Use same domain with /api path, or specify your backend URL
-        // If backend is on same server: return `${window.location.protocol}//${window.location.hostname}/api`;
-        // If backend is separate: return 'https://your-backend-url.com/api';
-        return `${window.location.protocol}//${window.location.hostname}/api`;
-    }
-    
-    // Fallback: Production backend URL (Railway or other)
-    return 'https://yatra-production.up.railway.app/api';
+
+    // Production backend URL on Railway
+    return 'https://mysql-production-8958.up.railway.app/api';
 })();
 let API_CACHE = {}; // Cache for offline support
 let API_CACHE_TIMESTAMP = {};
