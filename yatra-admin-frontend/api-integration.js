@@ -12,7 +12,7 @@ const API_BASE = (() => {
         return 'http://localhost:3000/api';
     }
     // Production backend URL
-    return 'https://mysql-production-8958.up.railway.app/api';
+    return 'https://yatrabackend-production.up.railway.app/api';
 })();
 let API_CACHE = {}; // Cache for offline support
 let API_CACHE_TIMESTAMP = {};
