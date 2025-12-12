@@ -38,10 +38,16 @@ const corsOptions = {
             origin.includes('vercel.app')
         );
         
-        // In production, reject if no CORS_ORIGIN is set (unless aksharjobs.com or Vercel is detected)
+        // Auto-allow Cloudflare Pages domains
+        const isCloudflarePagesDomain = origin && (
+            origin.includes('.pages.dev') || 
+            origin.includes('pages.dev')
+        );
+        
+        // In production, reject if no CORS_ORIGIN is set (unless aksharjobs.com, Vercel, or Cloudflare Pages is detected)
         if (process.env.NODE_ENV === 'production' && allowedOrigins.length === 0) {
-            // Allow if origin is from aksharjobs.com or Vercel
-            if (origin && (aksharjobsDomains.some(domain => origin.startsWith(domain)) || isVercelDomain)) {
+            // Allow if origin is from aksharjobs.com, Vercel, or Cloudflare Pages
+            if (origin && (aksharjobsDomains.some(domain => origin.startsWith(domain)) || isVercelDomain || isCloudflarePagesDomain)) {
                 return callback(null, true);
             }
             console.error('⚠️  SECURITY WARNING: CORS_ORIGIN not set in production!');
@@ -56,10 +62,11 @@ const corsOptions = {
             return callback(null, true);
         }
         
-        // Check if origin is allowed (including aksharjobs.com and Vercel)
+        // Check if origin is allowed (including aksharjobs.com, Vercel, and Cloudflare Pages)
         if (allowedOrigins.includes(origin) || 
             aksharjobsDomains.some(domain => origin.startsWith(domain)) || 
-            isVercelDomain) {
+            isVercelDomain ||
+            isCloudflarePagesDomain) {
             callback(null, true);
         } else {
             console.warn(`🚫 CORS blocked origin: ${origin}`);
