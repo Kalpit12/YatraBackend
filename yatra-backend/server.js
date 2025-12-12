@@ -84,7 +84,8 @@ app.use((req, res, next) => {
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-    res.json({ 
+    console.log('✅ Health check requested');
+    res.status(200).json({ 
         status: 'ok', 
         message: 'Yatra API Server is running',
         timestamp: new Date().toISOString()
