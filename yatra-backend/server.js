@@ -15,6 +15,7 @@ const settingsRoutes = require('./routes/settings');
 const hotelsRoutes = require('./routes/hotels');
 const adminRoutes = require('./routes/admin');
 const sectionsRoutes = require('./routes/sections');
+const journalsRoutes = require('./routes/journals');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -112,6 +113,7 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/hotels', hotelsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/sections', sectionsRoutes);
+app.use('/api/journals', journalsRoutes);
 
 // 404 handler
 app.use((req, res) => {
