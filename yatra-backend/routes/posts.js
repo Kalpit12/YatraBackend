@@ -700,14 +700,24 @@ router.patch('/:id/approve', authenticateToken, requireAdmin, async (req, res) =
             [approvedValue, postId]
         );
         
-        // Verify the update
-        const [updatedPost] = await query('SELECT id, approved, author_email, place FROM posts WHERE id = ?', [postId]);
+        // Verify the update and return updated post data
+        const [updatedPost] = await query('SELECT id, approved, author_email, place, is_private FROM posts WHERE id = ?', [postId]);
         if (updatedPost) {
             console.log(`✅ Post ${postId} approval status updated: approved = ${updatedPost.approved}`);
+            res.json({ 
+                message: `Post ${approvedValue ? 'approved' : 'disapproved'} successfully`,
+                post: {
+                    id: updatedPost.id,
+                    approved: updatedPost.approved === 1 || updatedPost.approved === true,
+                    isPrivate: updatedPost.is_private === 1 || updatedPost.is_private === true,
+                    author_email: updatedPost.author_email,
+                    place: updatedPost.place
+                }
+            });
         } else {
             console.error(`❌ Post ${postId} not found after update`);
+            res.status(404).json({ error: 'Post not found after update' });
         }
-        res.json({ message: `Post ${approved ? 'approved' : 'disapproved'} successfully` });
     } catch (error) {
         console.error('Error updating post approval:', error);
         res.status(500).json({ error: 'Failed to update post approval' });
