@@ -11,7 +11,8 @@ router.get('/', authenticateToken, async (req, res) => {
         let sql = `
             SELECT 
                 p.*,
-                GROUP_CONCAT(DISTINCT pt.tag_name) as tags
+                GROUP_CONCAT(DISTINCT pt.tag_name) as tags,
+                COALESCE(p.is_private, FALSE) as isPrivate
             FROM posts p
             LEFT JOIN post_tags pt ON p.id = pt.post_id
             WHERE 1=1
@@ -194,6 +195,7 @@ router.get('/', authenticateToken, async (req, res) => {
                 lat: post.lat ? parseFloat(post.lat) : null,
                 lng: post.lng ? parseFloat(post.lng) : null,
                 approved: post.approved === 1,
+                isPrivate: post.isPrivate === 1 || post.isPrivate === true || (post.is_private === 1 || post.is_private === true),
                 media: media,
                 tags: post.tags ? post.tags.split(',') : []
             };
@@ -391,15 +393,42 @@ router.post('/', authenticateToken, async (req, res) => {
         
         console.log(`📦 Inserting post with section_id: ${sectionIdForInsert} (original: "${section}")`);
         
+        // Handle isPrivate field (add column if it doesn't exist)
+        const finalIsPrivate = req.body.isPrivate !== undefined ? (req.body.isPrivate === true || req.body.isPrivate === 'true') : false;
+        
+        // Check if is_private column exists, if not, add it
+        try {
+            // Check if column exists first
+            const [columnCheck] = await query(`
+                SELECT COUNT(*) as count 
+                FROM information_schema.COLUMNS 
+                WHERE TABLE_SCHEMA = DATABASE() 
+                AND TABLE_NAME = 'posts' 
+                AND COLUMN_NAME = 'is_private'
+            `);
+            
+            if (!columnCheck || columnCheck.count === 0) {
+                // Column doesn't exist, add it
+                await query(`
+                    ALTER TABLE posts 
+                    ADD COLUMN is_private BOOLEAN DEFAULT FALSE
+                `);
+                console.log('✅ Added is_private column to posts table');
+            }
+        } catch (alterError) {
+            // Error checking or adding column
+            console.warn('⚠️ Could not check/add is_private column:', alterError.message);
+        }
+        
         // Insert post
         const result = await query(`
             INSERT INTO posts (
                 author_email, author_name, author_image_url, place, location,
-                section_id, description, lat, lng, approved
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                section_id, description, lat, lng, approved, is_private
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
             finalAuthorEmail, finalAuthorName, finalAuthorImage, finalPlace, finalLocation,
-            sectionIdForInsert, finalDescription, finalLat, finalLng, finalApproved
+            sectionIdForInsert, finalDescription, finalLat, finalLng, finalApproved, finalIsPrivate
         ]);
         
         const postId = result.insertId;
