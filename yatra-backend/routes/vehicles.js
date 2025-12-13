@@ -65,6 +65,8 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // Create new vehicle (protected - requires admin)
 router.post('/', authenticateToken, requireAdmin, async (req, res) => {
     try {
+        console.log('📥 POST /vehicles - Received request body:', JSON.stringify(req.body, null, 2));
+        
         const {
             name,
             type,
@@ -81,6 +83,7 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
 
         // Basic validation to avoid DB errors and return clear message
         if (!name || !type || capacity === undefined || capacity === null) {
+            console.error('❌ Missing required fields:', { name, type, capacity });
             return res.status(400).json({
                 error: 'Missing required fields: name, type, capacity'
             });
@@ -88,12 +91,28 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
 
         const parsedCapacity = Number(capacity);
         if (!Number.isFinite(parsedCapacity) || parsedCapacity <= 0) {
+            console.error('❌ Invalid capacity:', capacity);
             return res.status(400).json({
                 error: 'Capacity must be a positive number'
             });
         }
 
         const safeCapacity = parsedCapacity;
+        
+        console.log('📝 Inserting vehicle with data:', {
+            name,
+            type,
+            capacity: safeCapacity,
+            regNo,
+            groupLeaderEmail,
+            groupLeaderName,
+            driver,
+            driverPhone,
+            color: color || '#FF9933',
+            status: status || 'Active',
+            notes: notes || ''
+        });
+        
         const result = await query(
             `
             INSERT INTO vehicles (
@@ -111,10 +130,10 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
             [
-                name,
-                type,
+                name || '',
+                type || '',
                 safeCapacity,
-                regNo,
+                regNo || null,
                 groupLeaderEmail || null,
                 groupLeaderName || null,
                 driver || '',
@@ -125,13 +144,25 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
             ]
         );
 
+        console.log('✅ Vehicle created successfully, ID:', result.insertId);
+        
         res.status(201).json({
             id: result.insertId,
             message: 'Vehicle created successfully'
         });
     } catch (error) {
-        console.error('Error creating vehicle:', error);
-        res.status(500).json({ error: 'Failed to create vehicle' });
+        console.error('❌ Error creating vehicle:', error);
+        console.error('Error details:', {
+            message: error.message,
+            code: error.code,
+            sqlState: error.sqlState,
+            sqlMessage: error.sqlMessage,
+            stack: error.stack
+        });
+        res.status(500).json({ 
+            error: 'Failed to create vehicle',
+            details: error.message 
+        });
     }
 });
 
