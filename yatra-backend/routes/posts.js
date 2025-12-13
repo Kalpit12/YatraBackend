@@ -218,7 +218,7 @@ router.get('/', authenticateToken, async (req, res) => {
                 timestamp: post.created_at.toISOString(),
                 lat: post.lat ? parseFloat(post.lat) : null,
                 lng: post.lng ? parseFloat(post.lng) : null,
-                approved: post.approved === 1,
+                approved: post.approved === 1 || post.approved === true,
                 isPrivate: post.is_private === 1 || post.is_private === true || false,
                 media: media,
                 tags: post.tags ? post.tags.split(',') : []
