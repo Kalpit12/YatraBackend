@@ -42,14 +42,16 @@ router.get('/', authenticateToken, async (req, res) => {
         const params = [];
         
         // If not admin, only show approved posts
+        // If admin and no approved filter specified, show ALL posts (including unapproved)
         if (!req.user || !req.user.isAdmin) {
             sql += ' AND p.approved = ?';
             params.push(true);
         } else if (approved !== undefined) {
-            // Admins can filter by approval status
+            // Admins can filter by approval status if explicitly requested
             sql += ' AND p.approved = ?';
             params.push(approved === 'true');
         }
+        // If admin and approved is undefined, show all posts (no filter)
         if (section) {
             sql += ' AND p.section_id = ?';
             params.push(section);
@@ -543,13 +545,28 @@ router.post('/', authenticateToken, async (req, res) => {
             }
         }
         
+        console.log(`✅ Post created successfully: ID=${postId}, Author=${finalAuthorEmail}, Approved=${finalApproved}, Private=${finalIsPrivate}`);
+        
         res.status(201).json({ 
             id: postId, 
-            message: 'Post created successfully' 
+            message: 'Post created successfully',
+            approved: finalApproved,
+            isPrivate: finalIsPrivate
         });
     } catch (error) {
-        console.error('Error creating post:', error);
-        res.status(500).json({ error: 'Failed to create post' });
+        console.error('❌ Error creating post:', error);
+        console.error('Error stack:', error.stack);
+        console.error('Request body:', {
+            authorEmail: req.body.authorEmail || req.body.email,
+            place: req.body.place,
+            hasMedia: !!(req.body.media && req.body.media.length > 0),
+            mediaCount: req.body.media ? req.body.media.length : 0
+        });
+        res.status(500).json({ 
+            error: 'Failed to create post',
+            message: error.message,
+            details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
     }
 });
 
