@@ -65,34 +65,59 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // Create new vehicle (protected - requires admin)
 router.post('/', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        // Ensure vehicles table exists with all required columns
+        // Check and add missing columns if they don't exist
         try {
-            await query(`
-                CREATE TABLE IF NOT EXISTS vehicles (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    name VARCHAR(200) NOT NULL,
-                    type VARCHAR(100) NOT NULL,
-                    capacity INT NOT NULL,
-                    reg_no VARCHAR(50) UNIQUE,
-                    group_leader_email VARCHAR(255),
-                    group_leader_name VARCHAR(200),
-                    driver_name VARCHAR(200),
-                    driver_phone VARCHAR(20),
-                    color VARCHAR(20) DEFAULT '#FF9933',
-                    status ENUM('Active', 'Inactive', 'Maintenance') DEFAULT 'Active',
-                    current_lat DECIMAL(10, 8),
-                    current_lng DECIMAL(11, 8),
-                    last_update TIMESTAMP NULL,
-                    notes TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    INDEX idx_status (status),
-                    INDEX idx_group_leader (group_leader_email)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            const [columns] = await query(`
+                SELECT COLUMN_NAME 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = DATABASE() 
+                AND TABLE_NAME = 'vehicles'
             `);
-            console.log('✅ Vehicles table ensured');
-        } catch (tableError) {
-            console.warn('⚠️ Could not ensure vehicles table (may already exist):', tableError.message);
+            const existingColumns = columns.map(c => c.COLUMN_NAME);
+            
+            // Add missing columns if needed
+            if (!existingColumns.includes('driver_name')) {
+                await query(`ALTER TABLE vehicles ADD COLUMN driver_name VARCHAR(200) DEFAULT ''`);
+                console.log('✅ Added driver_name column');
+            }
+            if (!existingColumns.includes('driver_phone')) {
+                await query(`ALTER TABLE vehicles ADD COLUMN driver_phone VARCHAR(20) DEFAULT ''`);
+                console.log('✅ Added driver_phone column');
+            }
+            if (!existingColumns.includes('color')) {
+                await query(`ALTER TABLE vehicles ADD COLUMN color VARCHAR(20) DEFAULT '#FF9933'`);
+                console.log('✅ Added color column');
+            }
+            if (!existingColumns.includes('status')) {
+                await query(`ALTER TABLE vehicles ADD COLUMN status ENUM('Active', 'Inactive', 'Maintenance') DEFAULT 'Active'`);
+                console.log('✅ Added status column');
+            }
+            if (!existingColumns.includes('current_lat')) {
+                await query(`ALTER TABLE vehicles ADD COLUMN current_lat DECIMAL(10, 8) DEFAULT NULL`);
+                console.log('✅ Added current_lat column');
+            }
+            if (!existingColumns.includes('current_lng')) {
+                await query(`ALTER TABLE vehicles ADD COLUMN current_lng DECIMAL(11, 8) DEFAULT NULL`);
+                console.log('✅ Added current_lng column');
+            }
+            if (!existingColumns.includes('last_update')) {
+                await query(`ALTER TABLE vehicles ADD COLUMN last_update TIMESTAMP NULL DEFAULT NULL`);
+                console.log('✅ Added last_update column');
+            }
+            if (!existingColumns.includes('notes')) {
+                await query(`ALTER TABLE vehicles ADD COLUMN notes TEXT DEFAULT NULL`);
+                console.log('✅ Added notes column');
+            }
+            if (!existingColumns.includes('created_at')) {
+                await query(`ALTER TABLE vehicles ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`);
+                console.log('✅ Added created_at column');
+            }
+            if (!existingColumns.includes('updated_at')) {
+                await query(`ALTER TABLE vehicles ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`);
+                console.log('✅ Added updated_at column');
+            }
+        } catch (alterError) {
+            console.warn('⚠️ Could not check/add columns (table may not exist or error):', alterError.message);
         }
         
         console.log('📥 POST /vehicles - Received request body:', JSON.stringify(req.body, null, 2));
