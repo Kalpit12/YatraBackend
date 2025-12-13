@@ -23,9 +23,22 @@ router.get('/', async (req, res) => {
         
         // Format response
         const formatted = itinerary.map(item => {
-            const activities = item.activities_json 
+            let activities = item.activities_json 
                 ? JSON.parse('[' + item.activities_json + ']')
                 : [];
+            
+            // Deduplicate activities by time and activity text
+            const seenActivities = new Set();
+            const uniqueActivities = [];
+            activities.forEach(activity => {
+                const key = `${activity.time || ''}|${activity.activity || ''}`;
+                if (!seenActivities.has(key)) {
+                    seenActivities.add(key);
+                    uniqueActivities.push(activity);
+                }
+            });
+            activities = uniqueActivities;
+            
             const images = item.images ? item.images.split(',') : [];
             
             return {
@@ -74,6 +87,17 @@ router.get('/:id', async (req, res) => {
             [req.params.id]
         );
         
+        // Deduplicate activities
+        const seenActivities = new Set();
+        const uniqueActivities = [];
+        activities.forEach(a => {
+            const key = `${a.time || ''}|${a.activity || ''}`;
+            if (!seenActivities.has(key)) {
+                seenActivities.add(key);
+                uniqueActivities.push({ time: a.time, activity: a.activity });
+            }
+        });
+        
         // Get images
         const images = await query(
             'SELECT image_url FROM itinerary_images WHERE itinerary_id = ? ORDER BY display_order, id',
@@ -82,7 +106,7 @@ router.get('/:id', async (req, res) => {
         
         res.json({
             ...itinerary,
-            activities: activities.map(a => ({ time: a.time, activity: a.activity })),
+            activities: uniqueActivities,
             images: images.map(img => img.image_url)
         });
     } catch (error) {
@@ -143,19 +167,28 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
         
         const itineraryId = result.insertId;
         
-        // Insert activities
+        // Insert activities (with deduplication)
         if (activities && Array.isArray(activities) && activities.length > 0) {
+            const seenActivities = new Set();
+            let orderIndex = 0;
+            
             for (let i = 0; i < activities.length; i++) {
                 const activity = activities[i];
                 // Handle different activity formats
                 const activityTime = activity.time || activity.Time || '';
                 const activityText = activity.activity || activity.place || activity.Place || activity.description || '';
                 
-                if (activityText) { // Only insert if there's actual activity text
+                // Create unique key for deduplication
+                const activityKey = `${activityTime}|${activityText}`;
+                
+                // Only insert if there's actual activity text and we haven't seen it before
+                if (activityText && !seenActivities.has(activityKey)) {
+                    seenActivities.add(activityKey);
                     await query(`
                         INSERT INTO itinerary_activities (itinerary_id, time, activity, display_order)
                         VALUES (?, ?, ?, ?)
-                    `, [itineraryId, activityTime, activityText, i]);
+                    `, [itineraryId, activityTime, activityText, orderIndex]);
+                    orderIndex++;
                 }
             }
         }
@@ -228,19 +261,28 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
         await query('DELETE FROM itinerary_activities WHERE itinerary_id = ?', [req.params.id]);
         await query('DELETE FROM itinerary_images WHERE itinerary_id = ?', [req.params.id]);
         
-        // Insert new activities
+        // Insert new activities (with deduplication)
         if (activities && Array.isArray(activities) && activities.length > 0) {
+            const seenActivities = new Set();
+            let orderIndex = 0;
+            
             for (let i = 0; i < activities.length; i++) {
                 const activity = activities[i];
                 // Handle different activity formats
                 const activityTime = activity.time || activity.Time || '';
                 const activityText = activity.activity || activity.place || activity.Place || activity.description || '';
                 
-                if (activityText) { // Only insert if there's actual activity text
+                // Create unique key for deduplication
+                const activityKey = `${activityTime}|${activityText}`;
+                
+                // Only insert if there's actual activity text and we haven't seen it before
+                if (activityText && !seenActivities.has(activityKey)) {
+                    seenActivities.add(activityKey);
                     await query(`
                         INSERT INTO itinerary_activities (itinerary_id, time, activity, display_order)
                         VALUES (?, ?, ?, ?)
-                    `, [req.params.id, activityTime, activityText, i]);
+                    `, [req.params.id, activityTime, activityText, orderIndex]);
+                    orderIndex++;
                 }
             }
         }
