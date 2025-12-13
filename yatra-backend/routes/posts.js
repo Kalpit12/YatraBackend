@@ -691,24 +691,41 @@ router.patch('/:id/approve', authenticateToken, requireAdmin, async (req, res) =
         }
         
         const { approved } = req.body;
-        const approvedValue = approved === true || approved === 'true' || approved === 1;
+        console.log(`📝 Approval request for post ${postId}:`, { approved, type: typeof approved, body: req.body });
         
-        console.log(`📝 Approving post ${postId}: approved = ${approvedValue}`);
+        const approvedValue = approved === true || approved === 'true' || approved === 1 || approved === '1';
         
-        await query(
+        console.log(`📝 Converting approval value: ${approved} -> ${approvedValue} (boolean: ${Boolean(approvedValue)})`);
+        
+        // First, check current status
+        const [currentPost] = await query('SELECT id, approved, author_email, place FROM posts WHERE id = ?', [postId]);
+        if (!currentPost) {
+            return res.status(404).json({ error: 'Post not found' });
+        }
+        console.log(`📊 Current approval status for post ${postId}: ${currentPost.approved} (type: ${typeof currentPost.approved})`);
+        
+        // Update the post
+        const updateResult = await query(
             'UPDATE posts SET approved = ? WHERE id = ?',
-            [approvedValue, postId]
+            [approvedValue ? 1 : 0, postId]
         );
+        console.log(`📝 Update query executed. Rows affected:`, updateResult.affectedRows);
         
-        // Verify the update and return updated post data
+        // Verify the update immediately
         const [updatedPost] = await query('SELECT id, approved, author_email, place, is_private FROM posts WHERE id = ?', [postId]);
         if (updatedPost) {
-            console.log(`✅ Post ${postId} approval status updated: approved = ${updatedPost.approved}`);
+            const isApproved = updatedPost.approved === 1 || updatedPost.approved === true;
+            console.log(`✅ Post ${postId} approval status verified: approved = ${updatedPost.approved} (raw) -> ${isApproved} (boolean)`);
+            
+            if (isApproved !== approvedValue) {
+                console.error(`❌ WARNING: Approval status mismatch! Expected: ${approvedValue}, Got: ${isApproved}`);
+            }
+            
             res.json({ 
                 message: `Post ${approvedValue ? 'approved' : 'disapproved'} successfully`,
                 post: {
                     id: updatedPost.id,
-                    approved: updatedPost.approved === 1 || updatedPost.approved === true,
+                    approved: isApproved,
                     isPrivate: updatedPost.is_private === 1 || updatedPost.is_private === true,
                     author_email: updatedPost.author_email,
                     place: updatedPost.place
