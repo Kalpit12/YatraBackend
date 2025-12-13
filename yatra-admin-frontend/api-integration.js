@@ -324,6 +324,35 @@ const api = {
         });
     },
     
+    // ==================== SECTIONS ====================
+    async getSections() {
+        return this.fetch('/sections');
+    },
+    
+    async getSection(id) {
+        return this.fetch(`/sections/${id}`);
+    },
+    
+    async createSection(section) {
+        return this.fetch('/sections', {
+            method: 'POST',
+            body: JSON.stringify(section)
+        });
+    },
+    
+    async updateSection(id, section) {
+        return this.fetch(`/sections/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(section)
+        });
+    },
+    
+    async deleteSection(id) {
+        return this.fetch(`/sections/${id}`, {
+            method: 'DELETE'
+        });
+    },
+    
     // ==================== SETTINGS ====================
     async getSettings() {
         return this.fetch('/settings');
