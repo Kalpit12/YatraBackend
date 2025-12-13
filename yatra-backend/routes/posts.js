@@ -41,11 +41,19 @@ router.get('/', authenticateToken, async (req, res) => {
         `;
         const params = [];
         
-        // If not admin, only show approved posts
+        // If not admin, show approved posts OR user's own posts (regardless of approval)
         // If admin and no approved filter specified, show ALL posts (including unapproved)
         if (!req.user || !req.user.isAdmin) {
-            sql += ' AND p.approved = ?';
-            params.push(true);
+            // Show approved posts OR user's own posts (if logged in)
+            if (req.user && req.user.email) {
+                // User can see: approved posts OR their own posts (approved or unapproved)
+                sql += ' AND (p.approved = ? OR p.author_email = ?)';
+                params.push(true, req.user.email);
+            } else {
+                // Not logged in: only show approved posts
+                sql += ' AND p.approved = ?';
+                params.push(true);
+            }
         } else if (approved !== undefined) {
             // Admins can filter by approval status if explicitly requested
             sql += ' AND p.approved = ?';
