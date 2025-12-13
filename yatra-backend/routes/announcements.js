@@ -152,7 +152,7 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
             displayType || 'notification',
             timingType || 'instant',
             scheduledTime || null,
-            timingType === 'instant' ? true : false
+            false // Always set to false initially so users can receive it
         ]);
         
         res.status(201).json({ 
