@@ -65,6 +65,36 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // Create new vehicle (protected - requires admin)
 router.post('/', authenticateToken, requireAdmin, async (req, res) => {
     try {
+        // Ensure vehicles table exists with all required columns
+        try {
+            await query(`
+                CREATE TABLE IF NOT EXISTS vehicles (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    name VARCHAR(200) NOT NULL,
+                    type VARCHAR(100) NOT NULL,
+                    capacity INT NOT NULL,
+                    reg_no VARCHAR(50) UNIQUE,
+                    group_leader_email VARCHAR(255),
+                    group_leader_name VARCHAR(200),
+                    driver_name VARCHAR(200),
+                    driver_phone VARCHAR(20),
+                    color VARCHAR(20) DEFAULT '#FF9933',
+                    status ENUM('Active', 'Inactive', 'Maintenance') DEFAULT 'Active',
+                    current_lat DECIMAL(10, 8),
+                    current_lng DECIMAL(11, 8),
+                    last_update TIMESTAMP NULL,
+                    notes TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    INDEX idx_status (status),
+                    INDEX idx_group_leader (group_leader_email)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            `);
+            console.log('✅ Vehicles table ensured');
+        } catch (tableError) {
+            console.warn('⚠️ Could not ensure vehicles table (may already exist):', tableError.message);
+        }
+        
         console.log('📥 POST /vehicles - Received request body:', JSON.stringify(req.body, null, 2));
         
         const {
@@ -155,13 +185,29 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
         console.error('Error details:', {
             message: error.message,
             code: error.code,
+            errno: error.errno,
             sqlState: error.sqlState,
             sqlMessage: error.sqlMessage,
+            sql: error.sql,
             stack: error.stack
         });
+        
+        // Provide more specific error messages
+        let errorMessage = 'Failed to create vehicle';
+        if (error.code === 'ER_DUP_ENTRY') {
+            errorMessage = 'Vehicle with this registration number already exists';
+        } else if (error.code === 'ER_BAD_FIELD_ERROR') {
+            errorMessage = `Database schema error: ${error.sqlMessage || error.message}`;
+        } else if (error.sqlMessage) {
+            errorMessage = error.sqlMessage;
+        } else {
+            errorMessage = error.message || 'Failed to create vehicle';
+        }
+        
         res.status(500).json({ 
-            error: 'Failed to create vehicle',
-            details: error.message 
+            error: errorMessage,
+            details: error.message,
+            code: error.code
         });
     }
 });
