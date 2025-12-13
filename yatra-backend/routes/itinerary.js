@@ -193,9 +193,28 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
 router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const {
-            day, date, place, city, state, country, lat, lng,
+            day, date, dateObj, place, city, state, country, lat, lng,
             description, activities, images
         } = req.body;
+        
+        // Parse date - prefer dateObj if available, otherwise parse date string
+        let dateValue = date;
+        if (dateObj) {
+            // If dateObj is provided, use it
+            dateValue = new Date(dateObj).toISOString().split('T')[0];
+        } else if (date) {
+            // Try to parse the date string (could be formatted like "29 Nov 2024" or ISO format)
+            const parsedDate = new Date(date);
+            if (!isNaN(parsedDate.getTime())) {
+                dateValue = parsedDate.toISOString().split('T')[0];
+            } else {
+                // If parsing fails, use today's date as fallback
+                dateValue = new Date().toISOString().split('T')[0];
+            }
+        } else {
+            // No date provided, use today
+            dateValue = new Date().toISOString().split('T')[0];
+        }
         
         // Update itinerary
         await query(`
@@ -203,36 +222,52 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
             SET day = ?, date = ?, place = ?, city = ?, state = ?, country = ?, 
                 lat = ?, lng = ?, description = ?
             WHERE id = ?
-        `, [day, date, place, city, state, country, lat, lng, description, req.params.id]);
+        `, [day, dateValue, place, city, state, country, lat, lng, description, req.params.id]);
         
         // Delete old activities and images
         await query('DELETE FROM itinerary_activities WHERE itinerary_id = ?', [req.params.id]);
         await query('DELETE FROM itinerary_images WHERE itinerary_id = ?', [req.params.id]);
         
         // Insert new activities
-        if (activities && activities.length > 0) {
+        if (activities && Array.isArray(activities) && activities.length > 0) {
             for (let i = 0; i < activities.length; i++) {
-                await query(`
-                    INSERT INTO itinerary_activities (itinerary_id, time, activity, display_order)
-                    VALUES (?, ?, ?, ?)
-                `, [req.params.id, activities[i].time, activities[i].activity, i]);
+                const activity = activities[i];
+                // Handle different activity formats
+                const activityTime = activity.time || activity.Time || '';
+                const activityText = activity.activity || activity.place || activity.Place || activity.description || '';
+                
+                if (activityText) { // Only insert if there's actual activity text
+                    await query(`
+                        INSERT INTO itinerary_activities (itinerary_id, time, activity, display_order)
+                        VALUES (?, ?, ?, ?)
+                    `, [req.params.id, activityTime, activityText, i]);
+                }
             }
         }
         
         // Insert new images
-        if (images && images.length > 0) {
+        if (images && Array.isArray(images) && images.length > 0) {
             for (let i = 0; i < images.length; i++) {
-                await query(`
-                    INSERT INTO itinerary_images (itinerary_id, image_url, display_order)
-                    VALUES (?, ?, ?)
-                `, [req.params.id, images[i], i]);
+                const imageUrl = images[i];
+                if (imageUrl && typeof imageUrl === 'string' && imageUrl.trim()) {
+                    await query(`
+                        INSERT INTO itinerary_images (itinerary_id, image_url, display_order)
+                        VALUES (?, ?, ?)
+                    `, [req.params.id, imageUrl.trim(), i]);
+                }
             }
         }
         
         res.json({ message: 'Itinerary day updated successfully' });
     } catch (error) {
         console.error('Error updating itinerary:', error);
-        res.status(500).json({ error: 'Failed to update itinerary day' });
+        console.error('Request body:', JSON.stringify(req.body, null, 2));
+        console.error('Error stack:', error.stack);
+        res.status(500).json({ 
+            error: 'Failed to update itinerary day',
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
     }
 });
 
