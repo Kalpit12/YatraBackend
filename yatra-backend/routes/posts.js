@@ -8,11 +8,33 @@ router.get('/', authenticateToken, async (req, res) => {
     try {
         const { approved, section, author, limit, offset } = req.query;
         
+        // Check if is_private column exists, if not, add it
+        try {
+            const [columnCheck] = await query(`
+                SELECT COUNT(*) as count 
+                FROM information_schema.COLUMNS 
+                WHERE TABLE_SCHEMA = DATABASE() 
+                AND TABLE_NAME = 'posts' 
+                AND COLUMN_NAME = 'is_private'
+            `);
+            
+            if (!columnCheck || columnCheck.count === 0) {
+                // Column doesn't exist, add it
+                await query(`
+                    ALTER TABLE posts 
+                    ADD COLUMN is_private BOOLEAN DEFAULT FALSE
+                `);
+                console.log('✅ Added is_private column to posts table');
+            }
+        } catch (alterError) {
+            // Error checking or adding column
+            console.warn('⚠️ Could not check/add is_private column:', alterError.message);
+        }
+        
         let sql = `
             SELECT 
                 p.*,
-                GROUP_CONCAT(DISTINCT pt.tag_name) as tags,
-                COALESCE(p.is_private, FALSE) as isPrivate
+                GROUP_CONCAT(DISTINCT pt.tag_name) as tags
             FROM posts p
             LEFT JOIN post_tags pt ON p.id = pt.post_id
             WHERE 1=1
@@ -195,7 +217,7 @@ router.get('/', authenticateToken, async (req, res) => {
                 lat: post.lat ? parseFloat(post.lat) : null,
                 lng: post.lng ? parseFloat(post.lng) : null,
                 approved: post.approved === 1,
-                isPrivate: post.isPrivate === 1 || post.isPrivate === true || (post.is_private === 1 || post.is_private === true),
+                isPrivate: post.is_private === 1 || post.is_private === true || false,
                 media: media,
                 tags: post.tags ? post.tags.split(',') : []
             };
