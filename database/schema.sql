@@ -270,7 +270,7 @@ CREATE TABLE IF NOT EXISTS tags (
 CREATE TABLE IF NOT EXISTS announcements (
     id INT AUTO_INCREMENT PRIMARY KEY,
     recipient_type ENUM('all-travelers', 'specific-vehicle', 'specific-traveler') NOT NULL,
-    recipient_value VARCHAR(255),
+    recipient_value TEXT,
     message TEXT NOT NULL,
     display_type ENUM('notification', 'banner', 'modal') DEFAULT 'notification',
     timing_type ENUM('instant', 'scheduled') DEFAULT 'instant',

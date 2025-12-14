@@ -123,16 +123,82 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
             dbRecipientType = 'specific-traveler';
         }
         
+        // Validate recipient type is in allowed enum values
+        const allowedTypes = ['all-travelers', 'specific-vehicle', 'specific-traveler'];
+        if (!allowedTypes.includes(dbRecipientType)) {
+            return res.status(400).json({ 
+                error: `Invalid recipient type: ${dbRecipientType}. Allowed values: ${allowedTypes.join(', ')}` 
+            });
+        }
+        
         // Store recipient value
         let recipientValueToStore = recipientValue || null;
+        
         if (recipientType === 'all-travelers' || recipientType === 'all-group-leaders') {
             // For "all" types, store recipients array as JSON
+            // Note: recipient_value should be TEXT type to support large arrays
+            // If VARCHAR(255) is still in use, we'll handle it gracefully
             if (recipients && Array.isArray(recipients) && recipients.length > 0) {
-                recipientValueToStore = JSON.stringify(recipients);
+                const recipientsJson = JSON.stringify(recipients);
+                // Check if it exceeds VARCHAR(255) limit - if so, store a summary
+                if (recipientsJson.length > 255) {
+                    // Store count and first few emails as fallback
+                    const firstFew = recipients.slice(0, 5);
+                    recipientValueToStore = JSON.stringify({
+                        count: recipients.length,
+                        sample: firstFew
+                    });
+                    // If still too long, just store count
+                    if (recipientValueToStore.length > 255) {
+                        recipientValueToStore = `count:${recipients.length}`;
+                    }
+                } else {
+                    recipientValueToStore = recipientsJson;
+                }
+            } else {
+                // No recipients provided, store as null
+                recipientValueToStore = null;
             }
         } else if (recipientType === 'specific-group-leader') {
             // Store the group leader email
             recipientValueToStore = recipientValue || (recipients && recipients[0]) || null;
+        } else if (recipientType === 'specific-traveler') {
+            // Store the traveler email
+            recipientValueToStore = recipientValue || (recipients && recipients[0]) || null;
+        } else if (recipientType === 'by-vehicle' || recipientType === 'specific-vehicle') {
+            // Store vehicle ID as string
+            recipientValueToStore = recipientValue ? String(recipientValue) : null;
+        }
+        
+        // Validate message is not empty
+        if (!message || message.trim().length === 0) {
+            return res.status(400).json({ 
+                error: 'Message cannot be empty' 
+            });
+        }
+        
+        // Validate display type
+        const allowedDisplayTypes = ['notification', 'banner', 'modal'];
+        const finalDisplayType = displayType && allowedDisplayTypes.includes(displayType) 
+            ? displayType 
+            : 'notification';
+        
+        // Validate timing type
+        const allowedTimingTypes = ['instant', 'scheduled'];
+        const finalTimingType = timingType && allowedTimingTypes.includes(timingType) 
+            ? timingType 
+            : 'instant';
+        
+        // Validate scheduled time if timing is scheduled
+        let finalScheduledTime = null;
+        if (finalTimingType === 'scheduled' && scheduledTime) {
+            try {
+                finalScheduledTime = new Date(scheduledTime).toISOString().slice(0, 19).replace('T', ' ');
+            } catch (e) {
+                return res.status(400).json({ 
+                    error: 'Invalid scheduled time format' 
+                });
+            }
         }
         
         const result = await query(`
@@ -148,10 +214,10 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
         `, [
             dbRecipientType,
             recipientValueToStore,
-            message,
-            displayType || 'notification',
-            timingType || 'instant',
-            scheduledTime || null,
+            message.trim(),
+            finalDisplayType,
+            finalTimingType,
+            finalScheduledTime,
             false // Always set to false initially so users can receive it
         ]);
         
@@ -161,7 +227,27 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
         });
     } catch (error) {
         console.error('Error creating announcement:', error);
-        res.status(500).json({ error: 'Failed to create announcement' });
+        console.error('Error details:', {
+            message: error.message,
+            code: error.code,
+            sqlState: error.sqlState,
+            sqlMessage: error.sqlMessage
+        });
+        
+        // Provide more specific error messages
+        let errorMessage = 'Failed to create announcement';
+        if (error.code === 'ER_DATA_TOO_LONG') {
+            errorMessage = 'Recipient value is too long. Please reduce the number of recipients.';
+        } else if (error.code === 'ER_TRUNCATED_WRONG_VALUE_FOR_FIELD') {
+            errorMessage = 'Invalid value for recipient type or display type.';
+        } else if (error.sqlMessage) {
+            errorMessage = error.sqlMessage;
+        }
+        
+        res.status(500).json({ 
+            error: errorMessage,
+            details: error.message
+        });
     }
 });
 
