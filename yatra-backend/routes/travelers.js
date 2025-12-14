@@ -5,6 +5,58 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
+// Helper function to format traveler data
+function formatTravelerData(travelers) {
+    return travelers.map(t => ({
+        id: t.id,
+        tirthId: t.tirth_id,
+        firstName: t.first_name,
+        middleName: t.middle_name || '',
+        lastName: t.last_name,
+        name: `${t.first_name} ${t.middle_name ? t.middle_name + ' ' : ''}${t.last_name}`.trim(),
+        email: t.email,
+        phone: t.phone,
+        city: t.city,
+        country: t.country,
+        center: t.center,
+        birthDate: t.birth_date ? t.birth_date.toISOString().split('T')[0] : null,
+        age: t.age ? String(t.age) : null,
+        passportNo: t.passport_no,
+        passportIssueDate: t.passport_issue_date ? t.passport_issue_date.toISOString().split('T')[0] : null,
+        passportExpiryDate: t.passport_expiry_date ? t.passport_expiry_date.toISOString().split('T')[0] : null,
+        nationality: t.nationality,
+        gender: t.gender,
+        hoodiSize: t.hoodi_size,
+        vehicleId: t.vehicle_id,
+        profileLine: t.profile_line,
+        aboutMe: t.about_me,
+        image: t.image_url || '',
+        vehicleName: t.vehicle_name,
+        vehicleColor: t.vehicle_color
+    }));
+}
+
+// Get all travelers (public - for logged-in users to view profiles)
+router.get('/public', authenticateToken, async (req, res) => {
+    try {
+        const travelers = await query(`
+            SELECT 
+                t.*,
+                v.name as vehicle_name,
+                v.color as vehicle_color
+            FROM travelers t
+            LEFT JOIN vehicles v ON t.vehicle_id = v.id
+            ORDER BY t.first_name ASC, t.last_name ASC
+        `);
+        
+        const formatted = formatTravelerData(travelers);
+        res.json(formatted);
+    } catch (error) {
+        console.error('Error fetching public travelers:', error);
+        res.status(500).json({ error: 'Failed to fetch travelers' });
+    }
+});
+
 // Get all travelers (protected - requires admin authentication)
 router.get('/', authenticateToken, requireAdmin, async (req, res) => {
     try {
@@ -18,35 +70,7 @@ router.get('/', authenticateToken, requireAdmin, async (req, res) => {
             ORDER BY t.id ASC
         `);
         
-        // Format response to match frontend structure
-        const formatted = travelers.map(t => ({
-            id: t.id,
-            tirthId: t.tirth_id,
-            firstName: t.first_name,
-            middleName: t.middle_name || '',
-            lastName: t.last_name,
-            name: `${t.first_name} ${t.middle_name ? t.middle_name + ' ' : ''}${t.last_name}`.trim(),
-            email: t.email,
-            phone: t.phone,
-            city: t.city,
-            country: t.country,
-            center: t.center,
-            birthDate: t.birth_date ? t.birth_date.toISOString().split('T')[0] : null,
-            age: t.age ? String(t.age) : null,
-            passportNo: t.passport_no,
-            passportIssueDate: t.passport_issue_date ? t.passport_issue_date.toISOString().split('T')[0] : null,
-            passportExpiryDate: t.passport_expiry_date ? t.passport_expiry_date.toISOString().split('T')[0] : null,
-            nationality: t.nationality,
-            gender: t.gender,
-            hoodiSize: t.hoodi_size,
-            vehicleId: t.vehicle_id,
-            profileLine: t.profile_line,
-            aboutMe: t.about_me,
-            image: t.image_url || '',
-            vehicleName: t.vehicle_name,
-            vehicleColor: t.vehicle_color
-        }));
-        
+        const formatted = formatTravelerData(travelers);
         res.json(formatted);
     } catch (error) {
         console.error('Error fetching travelers:', error);
