@@ -3,31 +3,80 @@ const router = express.Router();
 const { query } = require('../config/database');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
+// Helper function to format settings
+function formatSettings(settings) {
+    const formatted = {};
+    settings.forEach(setting => {
+        let value = setting.setting_value;
+        
+        // Parse based on type
+        if (setting.setting_type === 'number') {
+            value = parseFloat(value);
+        } else if (setting.setting_type === 'boolean') {
+            value = value === 'true' || value === '1';
+        } else if (setting.setting_type === 'json') {
+            try {
+                value = JSON.parse(value);
+            } catch (e) {
+                value = setting.setting_value;
+            }
+        }
+        
+        formatted[setting.setting_key] = value;
+    });
+    return formatted;
+}
+
+// Get all settings (public - for user frontend)
+router.get('/public', async (req, res) => {
+    try {
+        const settings = await query('SELECT * FROM settings');
+        const formatted = formatSettings(settings);
+        res.json(formatted);
+    } catch (error) {
+        console.error('Error fetching public settings:', error);
+        res.status(500).json({ error: 'Failed to fetch settings' });
+    }
+});
+
+// Get single setting (public - for user frontend)
+router.get('/public/:key', async (req, res) => {
+    try {
+        const [setting] = await query(
+            'SELECT * FROM settings WHERE setting_key = ?',
+            [req.params.key]
+        );
+        
+        if (!setting) {
+            return res.status(404).json({ error: 'Setting not found' });
+        }
+        
+        let value = setting.setting_value;
+        if (setting.setting_type === 'number') {
+            value = parseFloat(value);
+        } else if (setting.setting_type === 'boolean') {
+            value = value === 'true' || value === '1';
+        } else if (setting.setting_type === 'json') {
+            try {
+                value = JSON.parse(value);
+            } catch (e) {
+                value = setting.setting_value;
+            }
+        }
+        
+        res.json({ key: setting.setting_key, value: value, type: setting.setting_type });
+    } catch (error) {
+        console.error('Error fetching public setting:', error);
+        res.status(500).json({ error: 'Failed to fetch setting' });
+    }
+});
+
 // Get all settings (protected - admin only)
 router.get('/', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const settings = await query('SELECT * FROM settings');
         
-        const formatted = {};
-        settings.forEach(setting => {
-            let value = setting.setting_value;
-            
-            // Parse based on type
-            if (setting.setting_type === 'number') {
-                value = parseFloat(value);
-            } else if (setting.setting_type === 'boolean') {
-                value = value === 'true' || value === '1';
-            } else if (setting.setting_type === 'json') {
-                try {
-                    value = JSON.parse(value);
-                } catch (e) {
-                    value = setting.setting_value;
-                }
-            }
-            
-            formatted[setting.setting_key] = value;
-        });
-        
+        const formatted = formatSettings(settings);
         res.json(formatted);
     } catch (error) {
         console.error('Error fetching settings:', error);
