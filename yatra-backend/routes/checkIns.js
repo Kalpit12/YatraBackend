@@ -68,11 +68,40 @@ router.get('/my-status', authenticateToken, async (req, res) => {
         
         const vehicleId = traveler.vehicle_id;
         
-        // Check if user is checked in
+        // Check if user is checked in (check both active=1 and any check-in record)
         const [checkIn] = await query(`
             SELECT * FROM check_ins 
             WHERE vehicle_id = ? AND traveler_email = ? AND active = 1
         `, [vehicleId, userEmail]);
+        
+        // Also check if there's any check-in record (even if inactive) for debugging
+        const [anyCheckIn] = await query(`
+            SELECT * FROM check_ins 
+            WHERE vehicle_id = ? AND traveler_email = ?
+            ORDER BY checked_in_at DESC
+            LIMIT 1
+        `, [vehicleId, userEmail]);
+        
+        console.log('🔍 Check-in lookup for:', { vehicleId, userEmail, found: !!checkIn, anyCheckIn: !!anyCheckIn });
+        if (anyCheckIn && !checkIn) {
+            console.log('⚠️ Found check-in record but it\'s inactive:', anyCheckIn);
+        }
+        
+        // Debug: Get all check-ins for this vehicle
+        const allCheckIns = await query(`
+            SELECT * FROM check_ins 
+            WHERE vehicle_id = ?
+            ORDER BY checked_in_at DESC
+        `, [vehicleId]);
+        console.log('🔍 All check-ins for vehicle', vehicleId, ':', allCheckIns.length);
+        if (allCheckIns.length > 0) {
+            console.log('🔍 Check-ins:', allCheckIns.map(ci => ({
+                id: ci.id,
+                email: ci.traveler_email,
+                active: ci.active,
+                checked_in_at: ci.checked_in_at
+            })));
+        }
         
         // Get count of active check-ins for this vehicle (to determine if check-in is "active")
         const [activeCheckIns] = await query(`

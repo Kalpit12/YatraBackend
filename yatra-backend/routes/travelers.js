@@ -227,6 +227,10 @@ router.put('/:id', authenticateToken, async (req, res) => {
             hoodiSize, vehicleId, profileLine, aboutMe, image
         } = req.body;
         
+        // Log the incoming vehicleId for debugging
+        console.log('📥 Received update request for traveler:', travelerId);
+        console.log('📥 vehicleId in request body:', vehicleId, 'type:', typeof vehicleId);
+        
         // If password is provided, hash it
         let passwordHash = null;
         if (password) {
@@ -253,7 +257,13 @@ router.put('/:id', authenticateToken, async (req, res) => {
         if (nationality) { updateFields.push('nationality = ?'); updateValues.push(nationality); }
         if (gender) { updateFields.push('gender = ?'); updateValues.push(gender); }
         if (hoodiSize) { updateFields.push('hoodi_size = ?'); updateValues.push(hoodiSize); }
-        if (vehicleId !== undefined) { updateFields.push('vehicle_id = ?'); updateValues.push(vehicleId); }
+        // Handle vehicleId - allow null to unassign, or number to assign
+        if (vehicleId !== undefined) { 
+            updateFields.push('vehicle_id = ?'); 
+            // Convert to null if empty string or 0, otherwise use the value
+            updateValues.push(vehicleId === '' || vehicleId === 0 || vehicleId === '0' ? null : (vehicleId ? parseInt(vehicleId) : null)); 
+            console.log('🚌 Updating vehicle_id for traveler:', travelerId, 'to:', vehicleId === '' || vehicleId === 0 || vehicleId === '0' ? null : (vehicleId ? parseInt(vehicleId) : null));
+        }
         if (profileLine) { updateFields.push('profile_line = ?'); updateValues.push(profileLine); }
         if (aboutMe) { updateFields.push('about_me = ?'); updateValues.push(aboutMe); }
         if (image !== undefined) { updateFields.push('image_url = ?'); updateValues.push(image); }
@@ -264,10 +274,17 @@ router.put('/:id', authenticateToken, async (req, res) => {
         
         updateValues.push(travelerId);
         
+        console.log('📝 Update query fields:', updateFields);
+        console.log('📝 Update values:', updateValues);
+        
         await query(
             `UPDATE travelers SET ${updateFields.join(', ')} WHERE id = ?`,
             updateValues
         );
+        
+        // Verify the update
+        const [updatedTraveler] = await query('SELECT id, email, vehicle_id FROM travelers WHERE id = ?', [travelerId]);
+        console.log('✅ Traveler updated. Current vehicle_id:', updatedTraveler?.vehicle_id);
         
         res.json({ message: 'Traveler updated successfully' });
     } catch (error) {
