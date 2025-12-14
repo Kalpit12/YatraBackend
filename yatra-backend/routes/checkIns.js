@@ -158,6 +158,13 @@ router.get('/vehicle/:vehicleId', authenticateToken, requireAdmin, async (req, r
         
         const checkIns = await query(sql, params);
         
+        // Check if vehicle has any travelers allocated (to determine if check-in is enabled)
+        const [vehicleCheck] = await query(
+            'SELECT COUNT(*) as travelerCount FROM travelers WHERE vehicle_id = ?',
+            [vehicleId]
+        );
+        const hasTravelers = vehicleCheck && vehicleCheck.travelerCount > 0;
+        
         // Format response - handle null values gracefully
         // MySQL BOOLEAN is stored as TINYINT(1): 1 = true, 0 = false
         const formatted = checkIns.map(ci => {
@@ -178,9 +185,11 @@ router.get('/vehicle/:vehicleId', authenticateToken, requireAdmin, async (req, r
             };
         });
         
+        // Check-in is "active" (enabled) if vehicle has travelers allocated
+        // This allows travelers to check in even if no one has checked in yet
         res.json({
             vehicleId: vehicleId,
-            active: active !== 'false',
+            active: hasTravelers, // Check-in is enabled if vehicle has travelers
             checkedIn: formatted.filter(c => c.checkedIn && c.email).map(c => c.email),
             travelers: formatted
         });

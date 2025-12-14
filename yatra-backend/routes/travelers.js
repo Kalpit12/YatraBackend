@@ -126,10 +126,21 @@ router.get('/email/:email', authenticateToken, async (req, res) => {
             });
         }
         
-        const [traveler] = await query(
-            'SELECT id, email, first_name, last_name, image_url FROM travelers WHERE email = ?',
-            [email]
-        );
+        const [traveler] = await query(`
+            SELECT 
+                t.id, 
+                t.email, 
+                t.first_name, 
+                t.last_name, 
+                t.middle_name,
+                t.image_url,
+                t.vehicle_id,
+                v.name as vehicle_name,
+                v.color as vehicle_color
+            FROM travelers t
+            LEFT JOIN vehicles v ON t.vehicle_id = v.id
+            WHERE t.email = ?
+        `, [email]);
         
         if (!traveler) {
             return res.status(404).json({ error: 'Traveler not found' });
@@ -138,8 +149,15 @@ router.get('/email/:email', authenticateToken, async (req, res) => {
         res.json({
             id: traveler.id,
             email: traveler.email,
-            name: `${traveler.first_name} ${traveler.last_name}`,
-            image: traveler.image_url || ''
+            firstName: traveler.first_name,
+            lastName: traveler.last_name,
+            middleName: traveler.middle_name || '',
+            name: `${traveler.first_name} ${traveler.middle_name ? traveler.middle_name + ' ' : ''}${traveler.last_name}`.trim(),
+            image: traveler.image_url || '',
+            vehicleId: traveler.vehicle_id,
+            vehicle_id: traveler.vehicle_id, // Include both field names for compatibility
+            vehicleName: traveler.vehicle_name || null,
+            vehicleColor: traveler.vehicle_color || null
         });
     } catch (error) {
         console.error('Error fetching traveler by email:', error);
