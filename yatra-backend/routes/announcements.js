@@ -28,9 +28,14 @@ router.get('/pending', async (req, res) => {
             ORDER BY created_at DESC
         `);
         
+        console.log(`📢 Found ${announcements.length} pending announcements`);
         res.json(announcements);
     } catch (error) {
         console.error('Error fetching pending announcements:', error);
+        console.error('Error details:', {
+            message: error.message,
+            stack: error.stack
+        });
         res.status(500).json({ error: 'Failed to fetch pending announcements' });
     }
 });
@@ -39,6 +44,25 @@ router.get('/pending', async (req, res) => {
 router.get('/user/:email', async (req, res) => {
     try {
         const { email } = req.params;
+        
+        // Validate email format
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            return res.status(400).json({ error: 'Invalid email format' });
+        }
+        
+        // Get user's vehicle_id and group leader status upfront for efficiency
+        const [traveler] = await query(
+            'SELECT id, vehicle_id FROM travelers WHERE email = ?',
+            [email]
+        );
+        const userVehicleId = traveler ? traveler.vehicle_id : null;
+        
+        // Check if user is a group leader
+        const [groupLeaderVehicle] = await query(
+            'SELECT id FROM vehicles WHERE group_leader_email = ?',
+            [email]
+        );
+        const isGroupLeader = !!groupLeaderVehicle;
         
         // Get all pending announcements
         const allAnnouncements = await query(`
@@ -55,30 +79,51 @@ router.get('/user/:email', async (req, res) => {
             let shouldReceive = false;
             
             if (announcement.recipient_type === 'all-travelers') {
-                shouldReceive = true;
+                // All travelers should receive
+                // Also check recipient_value in case it's stored with marker
+                shouldReceive = !announcement.recipient_value || 
+                               announcement.recipient_value === 'ALL_TRAVELERS' || 
+                               announcement.recipient_value === 'null' ||
+                               announcement.recipient_value === '';
             } else if (announcement.recipient_type === 'specific-traveler') {
-                shouldReceive = announcement.recipient_value === email;
+                // Check if this announcement is for this specific traveler
+                // Note: 'all-group-leaders' and 'specific-group-leader' are stored as 'specific-traveler'
+                
+                // Check for ALL_GROUP_LEADERS marker
+                if (announcement.recipient_value === 'ALL_GROUP_LEADERS') {
+                    // This is an all-group-leaders announcement
+                    shouldReceive = isGroupLeader;
+                } else {
+                    // Try to parse as JSON to check for type marker
+                    try {
+                        const recipientData = JSON.parse(announcement.recipient_value);
+                        if (recipientData && recipientData.type === 'ALL_GROUP_LEADERS') {
+                            // This is an all-group-leaders announcement
+                            if (recipientData.recipients && Array.isArray(recipientData.recipients)) {
+                                shouldReceive = isGroupLeader && recipientData.recipients.includes(email);
+                            } else if (recipientData.sample && Array.isArray(recipientData.sample)) {
+                                // If we only have a sample, include all group leaders
+                                shouldReceive = isGroupLeader;
+                            } else {
+                                shouldReceive = isGroupLeader;
+                            }
+                        } else {
+                            // Regular specific traveler announcement
+                            shouldReceive = announcement.recipient_value === email;
+                        }
+                    } catch (e) {
+                        // Not JSON, check direct match
+                        shouldReceive = announcement.recipient_value === email;
+                    }
+                }
             } else if (announcement.recipient_type === 'specific-vehicle') {
                 // Check if user is in this vehicle
-                const [traveler] = await query(
-                    'SELECT id FROM travelers WHERE email = ? AND vehicle_id = ?',
-                    [email, announcement.recipient_value]
-                );
-                shouldReceive = !!traveler;
-            } else if (announcement.recipient_type === 'all-group-leaders') {
-                // Check if user is a group leader
-                const [vehicle] = await query(
-                    'SELECT id FROM vehicles WHERE group_leader_email = ?',
-                    [email]
-                );
-                shouldReceive = !!vehicle;
-            } else if (announcement.recipient_type === 'by-vehicle') {
-                // Check if user is in this vehicle
-                const [traveler] = await query(
-                    'SELECT id FROM travelers WHERE email = ? AND vehicle_id = ?',
-                    [email, announcement.recipient_value]
-                );
-                shouldReceive = !!traveler;
+                if (userVehicleId && announcement.recipient_value) {
+                    // Convert both to numbers for comparison
+                    const announcementVehicleId = parseInt(announcement.recipient_value);
+                    const userVehicleIdNum = parseInt(userVehicleId);
+                    shouldReceive = !isNaN(announcementVehicleId) && !isNaN(userVehicleIdNum) && announcementVehicleId === userVehicleIdNum;
+                }
             }
             
             if (shouldReceive) {
@@ -86,9 +131,15 @@ router.get('/user/:email', async (req, res) => {
             }
         }
         
+        console.log(`📢 Found ${userAnnouncements.length} announcements for ${email} (vehicle: ${userVehicleId}, group leader: ${isGroupLeader})`);
+        
         res.json(userAnnouncements);
     } catch (error) {
         console.error('Error fetching user announcements:', error);
+        console.error('Error details:', {
+            message: error.message,
+            stack: error.stack
+        });
         res.status(500).json({ error: 'Failed to fetch user announcements' });
     }
 });
@@ -134,30 +185,35 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
         // Store recipient value
         let recipientValueToStore = recipientValue || null;
         
-        if (recipientType === 'all-travelers' || recipientType === 'all-group-leaders') {
-            // For "all" types, store recipients array as JSON
-            // Note: recipient_value should be TEXT type to support large arrays
-            // If VARCHAR(255) is still in use, we'll handle it gracefully
+        if (recipientType === 'all-travelers') {
+            // For "all travelers", store a special marker
+            recipientValueToStore = 'ALL_TRAVELERS';
+        } else if (recipientType === 'all-group-leaders') {
+            // For "all group leaders", store a special marker so we can identify it later
+            // Store as JSON with a type marker
             if (recipients && Array.isArray(recipients) && recipients.length > 0) {
-                const recipientsJson = JSON.stringify(recipients);
+                const recipientsJson = JSON.stringify({
+                    type: 'ALL_GROUP_LEADERS',
+                    recipients: recipients
+                });
                 // Check if it exceeds VARCHAR(255) limit - if so, store a summary
                 if (recipientsJson.length > 255) {
-                    // Store count and first few emails as fallback
                     const firstFew = recipients.slice(0, 5);
                     recipientValueToStore = JSON.stringify({
+                        type: 'ALL_GROUP_LEADERS',
                         count: recipients.length,
                         sample: firstFew
                     });
-                    // If still too long, just store count
+                    // If still too long, just store marker
                     if (recipientValueToStore.length > 255) {
-                        recipientValueToStore = `count:${recipients.length}`;
+                        recipientValueToStore = 'ALL_GROUP_LEADERS';
                     }
                 } else {
                     recipientValueToStore = recipientsJson;
                 }
             } else {
-                // No recipients provided, store as null
-                recipientValueToStore = null;
+                // No recipients provided, store marker
+                recipientValueToStore = 'ALL_GROUP_LEADERS';
             }
         } else if (recipientType === 'specific-group-leader') {
             // Store the group leader email
