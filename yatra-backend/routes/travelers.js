@@ -258,11 +258,19 @@ router.put('/:id', authenticateToken, async (req, res) => {
         if (gender) { updateFields.push('gender = ?'); updateValues.push(gender); }
         if (hoodiSize) { updateFields.push('hoodi_size = ?'); updateValues.push(hoodiSize); }
         // Handle vehicleId - allow null to unassign, or number to assign
+        // Always include vehicleId in update if it's provided (even if null, to allow unassigning)
         if (vehicleId !== undefined) { 
             updateFields.push('vehicle_id = ?'); 
-            // Convert to null if empty string or 0, otherwise use the value
-            updateValues.push(vehicleId === '' || vehicleId === 0 || vehicleId === '0' ? null : (vehicleId ? parseInt(vehicleId) : null)); 
-            console.log('🚌 Updating vehicle_id for traveler:', travelerId, 'to:', vehicleId === '' || vehicleId === 0 || vehicleId === '0' ? null : (vehicleId ? parseInt(vehicleId) : null));
+            // Convert to null if empty string, 0, or null, otherwise parse as integer
+            let finalVehicleId = null;
+            if (vehicleId !== null && vehicleId !== '' && vehicleId !== 0 && vehicleId !== '0') {
+                const parsed = parseInt(vehicleId);
+                finalVehicleId = isNaN(parsed) ? null : parsed;
+            }
+            updateValues.push(finalVehicleId); 
+            console.log('🚌 Updating vehicle_id for traveler:', travelerId);
+            console.log('🚌 Raw vehicleId from request:', vehicleId, 'type:', typeof vehicleId);
+            console.log('🚌 Final vehicle_id value:', finalVehicleId);
         }
         if (profileLine) { updateFields.push('profile_line = ?'); updateValues.push(profileLine); }
         if (aboutMe) { updateFields.push('about_me = ?'); updateValues.push(aboutMe); }
@@ -284,9 +292,26 @@ router.put('/:id', authenticateToken, async (req, res) => {
         
         // Verify the update
         const [updatedTraveler] = await query('SELECT id, email, vehicle_id FROM travelers WHERE id = ?', [travelerId]);
-        console.log('✅ Traveler updated. Current vehicle_id:', updatedTraveler?.vehicle_id);
+        console.log('✅ Traveler updated successfully');
+        console.log('✅ Verification - Traveler ID:', updatedTraveler?.id);
+        console.log('✅ Verification - Email:', updatedTraveler?.email);
+        console.log('✅ Verification - vehicle_id in database:', updatedTraveler?.vehicle_id, 'type:', typeof updatedTraveler?.vehicle_id);
         
-        res.json({ message: 'Traveler updated successfully' });
+        if (vehicleId !== undefined) {
+            const expectedVehicleId = vehicleId !== null && vehicleId !== '' && vehicleId !== 0 && vehicleId !== '0' 
+                ? (isNaN(parseInt(vehicleId)) ? null : parseInt(vehicleId))
+                : null;
+            if (updatedTraveler?.vehicle_id != expectedVehicleId) {
+                console.error('❌ MISMATCH! Expected vehicle_id:', expectedVehicleId, 'but got:', updatedTraveler?.vehicle_id);
+            } else {
+                console.log('✅ Vehicle ID matches expected value');
+            }
+        }
+        
+        res.json({ 
+            message: 'Traveler updated successfully',
+            vehicle_id: updatedTraveler?.vehicle_id 
+        });
     } catch (error) {
         console.error('Error updating traveler:', error);
         res.status(500).json({ error: 'Failed to update traveler' });
