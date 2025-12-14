@@ -49,47 +49,109 @@ router.get('/', authenticateToken, requireAdmin, async (req, res) => {
 // Get check-ins by vehicle (admin only to avoid data leakage)
 router.get('/vehicle/:vehicleId', authenticateToken, requireAdmin, async (req, res) => {
     try {
+        const vehicleId = parseInt(req.params.vehicleId);
+        if (!Number.isFinite(vehicleId) || vehicleId <= 0) {
+            return res.status(400).json({ error: 'Invalid vehicle ID' });
+        }
+        
         const { active } = req.query;
         
+        // Check if check_ins table exists, if not return empty result
+        try {
+            await query('SELECT 1 FROM check_ins LIMIT 1');
+        } catch (tableError) {
+            if (tableError.code === 'ER_NO_SUCH_TABLE') {
+                // Table doesn't exist, return empty result
+                return res.json({
+                    vehicleId: vehicleId,
+                    active: true,
+                    checkedIn: [],
+                    travelers: []
+                });
+            }
+            throw tableError;
+        }
+        
+        // Build query - use COALESCE to handle missing traveler data gracefully
+        // Note: travelers table has first_name, last_name (not name column)
         let sql = `
             SELECT 
-                ci.*,
-                t.name as traveler_name,
-                t.first_name,
-                t.last_name,
-                t.email
+                ci.id,
+                ci.vehicle_id,
+                ci.traveler_email,
+                ci.traveler_id,
+                ci.active,
+                ci.checked_in_at,
+                ci.checked_out_at,
+                COALESCE(t.first_name, '') as first_name,
+                COALESCE(t.last_name, '') as last_name,
+                COALESCE(t.middle_name, '') as middle_name,
+                COALESCE(t.email, ci.traveler_email, '') as email
             FROM check_ins ci
             LEFT JOIN travelers t ON ci.traveler_id = t.id
             WHERE ci.vehicle_id = ?
         `;
-        const params = [req.params.vehicleId];
+        const params = [vehicleId];
         
         if (active !== undefined) {
+            // MySQL BOOLEAN is stored as TINYINT(1): 1 = true, 0 = false
+            const activeValue = active === 'true' || active === true || active === '1' || active === 1 ? 1 : 0;
             sql += ' AND ci.active = ?';
-            params.push(active === 'true');
+            params.push(activeValue);
         }
         
         sql += ' ORDER BY ci.checked_in_at DESC';
         
         const checkIns = await query(sql, params);
         
-        // Format response
-        const formatted = checkIns.map(ci => ({
-            email: ci.traveler_email,
-            name: ci.traveler_name || `${ci.first_name} ${ci.last_name}`,
-            checkedIn: ci.active === 1,
-            timestamp: ci.checked_in_at
-        }));
+        // Format response - handle null values gracefully
+        // MySQL BOOLEAN is stored as TINYINT(1): 1 = true, 0 = false
+        const formatted = checkIns.map(ci => {
+            const isActive = ci.active === 1 || ci.active === true || ci.active === '1';
+            
+            // Build name from first_name, middle_name, last_name
+            const nameParts = [];
+            if (ci.first_name) nameParts.push(ci.first_name);
+            if (ci.middle_name) nameParts.push(ci.middle_name);
+            if (ci.last_name) nameParts.push(ci.last_name);
+            const fullName = nameParts.join(' ').trim() || '';
+            
+            return {
+                email: ci.traveler_email || ci.email || '',
+                name: fullName,
+                checkedIn: isActive,
+                timestamp: ci.checked_in_at || null
+            };
+        });
         
         res.json({
-            vehicleId: parseInt(req.params.vehicleId),
+            vehicleId: vehicleId,
             active: active !== 'false',
-            checkedIn: formatted.filter(c => c.checkedIn).map(c => c.email),
+            checkedIn: formatted.filter(c => c.checkedIn && c.email).map(c => c.email),
             travelers: formatted
         });
     } catch (error) {
         console.error('Error fetching vehicle check-ins:', error);
-        res.status(500).json({ error: 'Failed to fetch vehicle check-ins' });
+        console.error('Error details:', {
+            message: error.message,
+            code: error.code,
+            sqlState: error.sqlState,
+            sqlMessage: error.sqlMessage,
+            stack: error.stack
+        });
+        
+        // Provide more specific error message
+        let errorMessage = 'Failed to fetch vehicle check-ins';
+        if (error.code === 'ER_NO_SUCH_TABLE') {
+            errorMessage = 'Check-ins table does not exist. Please run database setup.';
+        } else if (error.sqlMessage) {
+            errorMessage = error.sqlMessage;
+        }
+        
+        res.status(500).json({ 
+            error: errorMessage,
+            details: error.message
+        });
     }
 });
 
