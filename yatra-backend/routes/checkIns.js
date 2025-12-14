@@ -46,6 +46,60 @@ router.get('/', authenticateToken, requireAdmin, async (req, res) => {
     }
 });
 
+// Get check-in status for traveler's own vehicle (public endpoint for travelers)
+router.get('/my-status', authenticateToken, async (req, res) => {
+    try {
+        const userEmail = req.user.email;
+        
+        // Get traveler's vehicle ID
+        const [traveler] = await query(
+            'SELECT vehicle_id FROM travelers WHERE email = ?',
+            [userEmail]
+        );
+        
+        if (!traveler || !traveler.vehicle_id) {
+            return res.json({
+                vehicleId: null,
+                active: false,
+                checkedIn: [],
+                isCheckedIn: false
+            });
+        }
+        
+        const vehicleId = traveler.vehicle_id;
+        
+        // Check if user is checked in
+        const [checkIn] = await query(`
+            SELECT * FROM check_ins 
+            WHERE vehicle_id = ? AND traveler_email = ? AND active = 1
+        `, [vehicleId, userEmail]);
+        
+        // Get count of active check-ins for this vehicle (to determine if check-in is "active")
+        const [activeCheckIns] = await query(`
+            SELECT COUNT(*) as count FROM check_ins 
+            WHERE vehicle_id = ? AND active = 1
+        `, [vehicleId]);
+        
+        const hasActiveCheckIns = activeCheckIns && activeCheckIns.count > 0;
+        
+        res.json({
+            vehicleId: vehicleId,
+            active: true, // Check-in is always available if vehicle is allocated
+            checkedIn: checkIn ? [userEmail] : [],
+            isCheckedIn: !!checkIn
+        });
+    } catch (error) {
+        console.error('Error fetching traveler check-in status:', error);
+        // Return safe default on error
+        res.json({
+            vehicleId: null,
+            active: false,
+            checkedIn: [],
+            isCheckedIn: false
+        });
+    }
+});
+
 // Get check-ins by vehicle (admin only to avoid data leakage)
 router.get('/vehicle/:vehicleId', authenticateToken, requireAdmin, async (req, res) => {
     try {
