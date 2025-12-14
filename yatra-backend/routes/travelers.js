@@ -313,13 +313,23 @@ router.post('/login', async (req, res) => {
             return res.status(400).json({ error: 'Email and password required' });
         }
         
+        // Use case-insensitive email comparison
         const [traveler] = await query(
-            'SELECT * FROM travelers WHERE email = ?',
+            'SELECT * FROM travelers WHERE LOWER(email) = LOWER(?)',
             [email]
         );
         
         if (!traveler) {
             return res.status(401).json({ error: 'Invalid email or password' });
+        }
+        
+        // Check if password_hash exists and is not empty
+        if (!traveler.password_hash || (typeof traveler.password_hash === 'string' && traveler.password_hash.trim() === '')) {
+            console.warn(`⚠️ Traveler ${traveler.email} has no password hash. Please set a password.`);
+            return res.status(401).json({ 
+                error: 'Invalid email or password',
+                message: 'Password not set for this account. Please contact administrator.'
+            });
         }
         
         // Verify password

@@ -187,31 +187,75 @@ router.get('/vehicle/:vehicleId', authenticateToken, requireAdmin, async (req, r
         
         const checkIns = await query(sql, params);
         
-        // Check if vehicle has any travelers allocated (to determine if check-in is enabled)
-        const [vehicleCheck] = await query(
-            'SELECT COUNT(*) as travelerCount FROM travelers WHERE vehicle_id = ?',
-            [vehicleId]
-        );
-        const hasTravelers = vehicleCheck && vehicleCheck.travelerCount > 0;
+        // Get ALL travelers assigned to this vehicle (not just those with check-in records)
+        const allTravelers = await query(`
+            SELECT 
+                id,
+                email,
+                first_name,
+                middle_name,
+                last_name
+            FROM travelers
+            WHERE vehicle_id = ?
+            ORDER BY first_name ASC, last_name ASC
+        `, [vehicleId]);
         
-        // Format response - handle null values gracefully
+        // Check if vehicle has any travelers allocated (to determine if check-in is enabled)
+        const hasTravelers = allTravelers.length > 0;
+        
+        // Create a map of check-in status by email
+        const checkInMap = new Map();
+        checkIns.forEach(ci => {
+            const email = ci.traveler_email || ci.email || '';
+            if (email) {
+                const isActive = ci.active === 1 || ci.active === true || ci.active === '1';
+                checkInMap.set(email.toLowerCase(), {
+                    checkedIn: isActive,
+                    timestamp: ci.checked_in_at || null
+                });
+            }
+        });
+        
+        // Format response - include ALL travelers assigned to vehicle
         // MySQL BOOLEAN is stored as TINYINT(1): 1 = true, 0 = false
-        const formatted = checkIns.map(ci => {
-            const isActive = ci.active === 1 || ci.active === true || ci.active === '1';
-            
+        const formatted = allTravelers.map(t => {
             // Build name from first_name, middle_name, last_name
             const nameParts = [];
-            if (ci.first_name) nameParts.push(ci.first_name);
-            if (ci.middle_name) nameParts.push(ci.middle_name);
-            if (ci.last_name) nameParts.push(ci.last_name);
+            if (t.first_name) nameParts.push(t.first_name);
+            if (t.middle_name) nameParts.push(t.middle_name);
+            if (t.last_name) nameParts.push(t.last_name);
             const fullName = nameParts.join(' ').trim() || '';
             
+            // Check if this traveler has a check-in record
+            const checkInStatus = checkInMap.get(t.email.toLowerCase());
+            
             return {
-                email: ci.traveler_email || ci.email || '',
+                email: t.email || '',
                 name: fullName,
-                checkedIn: isActive,
-                timestamp: ci.checked_in_at || null
+                checkedIn: checkInStatus ? checkInStatus.checkedIn : false,
+                timestamp: checkInStatus ? checkInStatus.timestamp : null
             };
+        });
+        
+        // Also include any check-in records for travelers not in the travelers table
+        // (edge case: check-in exists but traveler not assigned to vehicle)
+        checkIns.forEach(ci => {
+            const email = ci.traveler_email || ci.email || '';
+            if (email && !formatted.find(t => t.email.toLowerCase() === email.toLowerCase())) {
+                const isActive = ci.active === 1 || ci.active === true || ci.active === '1';
+                const nameParts = [];
+                if (ci.first_name) nameParts.push(ci.first_name);
+                if (ci.middle_name) nameParts.push(ci.middle_name);
+                if (ci.last_name) nameParts.push(ci.last_name);
+                const fullName = nameParts.join(' ').trim() || '';
+                
+                formatted.push({
+                    email: email,
+                    name: fullName,
+                    checkedIn: isActive,
+                    timestamp: ci.checked_in_at || null
+                });
+            }
         });
         
         // Check-in is "active" (enabled) if vehicle has travelers allocated
