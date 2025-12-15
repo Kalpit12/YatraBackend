@@ -3,6 +3,13 @@ const router = express.Router();
 const { query } = require('../config/database');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
+// Normalize date input to YYYY-MM-DD (returns null if invalid)
+const normalizeDate = (value) => {
+    const parsed = value ? new Date(value) : new Date();
+    if (isNaN(parsed.getTime())) return null;
+    return parsed.toISOString().split('T')[0];
+};
+
 // Get all check-ins (admin only to avoid data leakage)
 router.get('/', authenticateToken, requireAdmin, async (req, res) => {
     try {
@@ -50,14 +57,36 @@ router.get('/', authenticateToken, requireAdmin, async (req, res) => {
 router.get('/my-status', authenticateToken, async (req, res) => {
     try {
         const userEmail = req.user.email;
+        const targetDate = normalizeDate(req.query.date);
         
-        // Get traveler's vehicle ID
+        // Get traveler id and base vehicle ID
         const [traveler] = await query(
-            'SELECT vehicle_id FROM travelers WHERE email = ?',
+            'SELECT id, vehicle_id FROM travelers WHERE email = ?',
             [userEmail]
         );
         
         if (!traveler || !traveler.vehicle_id) {
+            console.warn('⚠️ Traveler not found or no base vehicle_id for', userEmail);
+        }
+        
+        // Prefer day-wise vehicle allotment if present for the date
+        let vehicleId = null;
+        if (traveler && traveler.id && targetDate) {
+            const [dayAllotment] = await query(
+                'SELECT vehicle_id FROM vehicle_allotments WHERE traveler_id = ? AND date = ?',
+                [traveler.id, targetDate]
+            );
+            if (dayAllotment && dayAllotment.vehicle_id) {
+                vehicleId = dayAllotment.vehicle_id;
+            }
+        }
+
+        // Fallback to base vehicle_id stored on traveler
+        if (!vehicleId && traveler && traveler.vehicle_id) {
+            vehicleId = traveler.vehicle_id;
+        }
+
+        if (!vehicleId) {
             return res.json({
                 vehicleId: null,
                 active: false,
@@ -65,8 +94,6 @@ router.get('/my-status', authenticateToken, async (req, res) => {
                 isCheckedIn: false
             });
         }
-        
-        const vehicleId = traveler.vehicle_id;
         
         // Check if user is checked in (check both active=1 and any check-in record)
         const [checkIn] = await query(`
