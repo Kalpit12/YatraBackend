@@ -73,6 +73,21 @@ CREATE TABLE IF NOT EXISTS vehicles (
     INDEX idx_group_leader (group_leader_email)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ==================== VEHICLE ALLOTMENTS TABLE (Day-wise assignments) ====================
+CREATE TABLE IF NOT EXISTS vehicle_allotments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    date DATE NOT NULL,
+    traveler_id INT NOT NULL,
+    vehicle_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_date_traveler (date, traveler_id),
+    INDEX idx_vehicle_date (vehicle_id, date),
+    INDEX idx_traveler_date (traveler_id, date),
+    FOREIGN KEY (traveler_id) REFERENCES travelers(id) ON DELETE CASCADE,
+    FOREIGN KEY (vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ==================== ITINERARY TABLE ====================
 CREATE TABLE IF NOT EXISTS itinerary (
     id INT AUTO_INCREMENT PRIMARY KEY,

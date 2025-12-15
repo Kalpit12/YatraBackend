@@ -230,6 +230,26 @@ const api = {
             method: 'DELETE'
         });
     },
+
+    // ==================== VEHICLE ALLOTMENTS (Day-wise) ====================
+    async getVehicleAllotments(filters = {}) {
+        const params = new URLSearchParams(filters);
+        return this.fetch(`/vehicles/allotments?${params}`);
+    },
+
+    async saveVehicleAllotments(date, assignments = [], replaceExisting = true) {
+        return this.fetch('/vehicles/allotments/bulk', {
+            method: 'POST',
+            body: JSON.stringify({ date, assignments, replaceExisting })
+        });
+    },
+
+    async deleteVehicleAllotments(filters = {}) {
+        const params = new URLSearchParams(filters);
+        return this.fetch(`/vehicles/allotments?${params}`, {
+            method: 'DELETE'
+        });
+    },
     
     // ==================== POSTS ====================
     async getPosts(filters = {}) {
@@ -264,6 +284,38 @@ const api = {
     
     async deletePost(id) {
         return this.fetch(`/posts/${id}`, {
+            method: 'DELETE'
+        });
+    },
+    
+    // ==================== ANNOUNCEMENTS ====================
+    async getAnnouncements() {
+        return this.fetch('/announcements');
+    },
+    
+    async getPendingAnnouncements() {
+        return this.fetch('/announcements/pending');
+    },
+    
+    async getUserAnnouncements(email) {
+        return this.fetch(`/announcements/user/${encodeURIComponent(email)}`);
+    },
+    
+    async createAnnouncement(announcement) {
+        return this.fetch('/announcements', {
+            method: 'POST',
+            body: JSON.stringify(announcement)
+        });
+    },
+    
+    async markAnnouncementSent(id) {
+        return this.fetch(`/announcements/${id}/sent`, {
+            method: 'PUT'
+        });
+    },
+    
+    async deleteAnnouncement(id) {
+        return this.fetch(`/announcements/${id}`, {
             method: 'DELETE'
         });
     },

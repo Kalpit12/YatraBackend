@@ -653,14 +653,34 @@
             padding: 15px 30px;
             border-radius: 10px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-            z-index: 2500;
+            z-index: 10000 !important;
             display: none;
+            visibility: hidden;
+            opacity: 0;
             animation: slideInRight 0.3s ease;
+            max-width: 400px;
+            word-wrap: break-word;
+            font-size: 14px;
+            font-weight: 500;
         }
 
         @keyframes slideInRight {
-            from { transform: translateX(400px); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
+            from { 
+                transform: translateX(400px); 
+                opacity: 0; 
+                visibility: hidden;
+            }
+            to { 
+                transform: translateX(0); 
+                opacity: 1; 
+                visibility: visible;
+            }
+        }
+        
+        .success-message.show {
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
         }
 
         /* Gallery */
@@ -925,7 +945,10 @@
                 if (adminName) adminName.textContent = result.admin.name || 'Admin';
                 
                     if (typeof updateDashboard === 'function') {
-                        updateDashboard();
+                        // Load data from API first, then update dashboard
+                        updateDashboard().catch(err => {
+                            console.error('Error updating dashboard after login:', err);
+                        });
                 }
                 
                 setTimeout(() => {
@@ -1024,6 +1047,27 @@
             setVal('travelerCountry', traveler.country);
             setVal('travelerCenter', traveler.center);
             setVal('travelerHoodiSize', traveler.hoodiSize);
+            
+            // Populate vehicle dropdown
+            const vehicleIdField = document.getElementById('travelerVehicleId') || document.getElementById('vehicleId');
+            if (vehicleIdField) {
+                // Populate dropdown with vehicles
+                const vehiclesList = (typeof vehicles !== 'undefined' && Array.isArray(vehicles)) ? vehicles : [];
+                vehicleIdField.innerHTML = '<option value="">No vehicle assigned</option>';
+                vehiclesList.forEach(v => {
+                    const option = document.createElement('option');
+                    option.value = v.id;
+                    option.textContent = `${v.name} (${v.type} - ${v.capacity} seats)`;
+                    vehicleIdField.appendChild(option);
+                });
+                
+                // Set current vehicle assignment
+                const vehicleId = traveler.vehicleId || traveler.vehicle_id || null;
+                // Convert null/undefined to empty string for dropdown
+                vehicleIdField.value = vehicleId ? String(vehicleId) : '';
+                console.log('✅ Set vehicle ID dropdown to:', vehicleIdField.value, 'for traveler:', traveler.email);
+                console.log('✅ Original vehicleId from traveler object:', vehicleId, 'type:', typeof vehicleId);
+            }
             
             // Show image if exists
             const travelerProfiles = JSON.parse(localStorage.getItem('travelerProfiles') || '{}');
@@ -1404,19 +1448,43 @@
         // Itinerary Modal
         window.openItineraryModal = function() {
             const modal = document.getElementById('itineraryModal');
-            const titleEl = document.getElementById('itineraryModalTitle');
-            if (titleEl) titleEl.textContent = 'Add Itinerary Day';
-            if (modal) modal.style.display = 'block';
-            const itineraryList = (typeof itinerary !== 'undefined') ? itinerary : [];
-            const nextDay = itineraryList.length > 0 ? Math.max(...itineraryList.map(d => d.day || 0)) + 1 : 1;
-            const dayEl = document.getElementById('itineraryDay');
-            if (dayEl) dayEl.value = nextDay;
-            if (typeof addItineraryImageInput === 'function') {
-                const container = document.getElementById('itineraryImagesContainer');
-                if (container) container.innerHTML = '';
-                addItineraryImageInput();
+            if (modal) {
+                // Clear activities and images containers FIRST
+                const activitiesContainer = document.getElementById('itineraryActivitiesContainer');
+                if (activitiesContainer) {
+                    activitiesContainer.innerHTML = '';
+                }
+                const imagesContainer = document.getElementById('itineraryImagesContainer');
+                if (imagesContainer) {
+                    imagesContainer.innerHTML = '';
+                }
+                
+                // Reset form and clear ID for new entry
+                const form = modal.querySelector('form');
+                if (form) {
+                    form.reset();
+                }
+                const idField = document.getElementById('itineraryId');
+                if (idField) {
+                    idField.value = '';
+                    console.log('✅ Cleared itinerary ID for new entry (early function)');
+                }
+                const titleEl = document.getElementById('itineraryModalTitle');
+                if (titleEl) {
+                    titleEl.textContent = 'Add Itinerary Day';
+                }
+                modal.style.display = 'block';
+                const itineraryList = (typeof itinerary !== 'undefined') ? itinerary : [];
+                const nextDay = itineraryList.length > 0 ? Math.max(...itineraryList.map(d => d.day || 0)) + 1 : 1;
+                const dayEl = document.getElementById('itineraryDay');
+                if (dayEl) dayEl.value = nextDay;
+                if (typeof addItineraryImageInput === 'function') {
+                    const container = document.getElementById('itineraryImagesContainer');
+                    if (container) container.innerHTML = '';
+                    addItineraryImageInput();
+                }
+                if (typeof loadActivitiesIntoForm === 'function') loadActivitiesIntoForm([]);
             }
-            if (typeof loadActivitiesIntoForm === 'function') loadActivitiesIntoForm([]);
         };
         window.closeItineraryModal = function() {
             const modal = document.getElementById('itineraryModal');
@@ -1761,18 +1829,35 @@
         function showMessage(message, type = 'success') {
             try {
                 const msgDiv = document.getElementById('successMessage');
-                if (msgDiv) {
-                    msgDiv.textContent = message;
-                    msgDiv.style.background = type === 'error' ? '#dc3545' : (type === 'info' ? '#007bff' : 'var(--green)');
-                    msgDiv.style.display = 'block';
-                    
-                    setTimeout(() => {
-                        msgDiv.style.display = 'none';
-                    }, 3000);
-                } else {
-                    // Fallback to alert if element not found
+                if (!msgDiv) {
+                    console.warn('Notification element not found, using alert fallback');
                     alert(message);
+                    return;
                 }
+                
+                msgDiv.textContent = message;
+                msgDiv.style.background = type === 'error' ? '#dc3545' : (type === 'info' ? '#007bff' : (type === 'warning' ? '#ff9800' : 'var(--green)'));
+                msgDiv.classList.add('show');
+                msgDiv.style.display = 'block';
+                msgDiv.style.zIndex = '10000';
+                msgDiv.style.opacity = '1';
+                msgDiv.style.visibility = 'visible';
+                
+                // Force reflow to ensure animation
+                void msgDiv.offsetHeight;
+                
+                setTimeout(() => {
+                    if (msgDiv) {
+                        msgDiv.style.opacity = '0';
+                        msgDiv.classList.remove('show');
+                        setTimeout(() => {
+                            if (msgDiv) {
+                                msgDiv.style.display = 'none';
+                                msgDiv.style.visibility = 'hidden';
+                            }
+                        }, 300);
+                    }
+                }, 3000);
             } catch (e) {
                 console.error('Error showing message:', e);
                 alert(message);
@@ -2157,6 +2242,26 @@
             const lastName = document.getElementById('travelerLastName').value;
             const fullName = middleName ? `${firstName} ${middleName} ${lastName}` : `${firstName} ${lastName}`;
             
+            // Get vehicleId from form (if exists)
+            const vehicleIdField = document.getElementById('travelerVehicleId') || document.getElementById('vehicleId');
+            let vehicleId = null;
+            if (vehicleIdField) {
+                const fieldValue = vehicleIdField.value;
+                console.log('🚌 Vehicle field found, raw value:', fieldValue, 'type:', typeof fieldValue);
+                if (fieldValue && fieldValue.trim() !== '' && fieldValue !== 'null' && fieldValue !== 'undefined') {
+                    const parsed = parseInt(fieldValue);
+                    vehicleId = isNaN(parsed) ? null : parsed;
+                    console.log('🚌 Parsed vehicleId:', vehicleId);
+                } else {
+                    console.log('🚌 Vehicle field is empty, setting vehicleId to null');
+                    vehicleId = null;
+                }
+            } else {
+                console.warn('⚠️ Vehicle ID field not found in form!');
+            }
+            
+            console.log('🚌 Final Vehicle ID being sent:', vehicleId, 'Type:', typeof vehicleId);
+            
             const travelerData = {
                 tirthId: document.getElementById('travelerTirthId').value || `TY${String(Date.now()).slice(-3)}`,
                 firstName: firstName,
@@ -2179,8 +2284,11 @@
                 center: document.getElementById('travelerCenter').value || '',
                 hoodiSize: document.getElementById('travelerHoodiSize').value || null,
                 image: tempTravelerImage || '',
-                gender: 'Male' // Default, can add field later
+                gender: 'Male', // Default, can add field later
+                vehicleId: vehicleId // Always include vehicleId (can be null to unassign)
             };
+            
+            console.log('📦 Complete travelerData object:', JSON.stringify(travelerData, null, 2));
 
             console.log('📝 Starting to save traveler:', email);
             console.log('🖼️ Profile image included:', tempTravelerImage ? `Yes (${tempTravelerImage.length} chars)` : 'No');
@@ -2195,9 +2303,24 @@
 
                 if (travelerId) {
                     console.log('🔄 Updating existing traveler:', travelerId);
+                    console.log('📤 Traveler data being sent:', JSON.stringify(travelerData, null, 2));
                     // Update existing traveler via API
                     if (typeof api !== 'undefined' && api.updateTraveler) {
-                        await api.updateTraveler(parseInt(travelerId), travelerData);
+                        const response = await api.updateTraveler(parseInt(travelerId), travelerData);
+                        console.log('✅ API response:', response);
+                        
+                        // Clear cache to refresh traveler data
+                        if (api.clearCacheFor) {
+                            api.clearCacheFor('/travelers');
+                            api.clearCacheFor('/travelers/public');
+                            console.log('🗑️ Cleared traveler cache');
+                        }
+                        
+                        // Reload travelers list to reflect changes
+                        if (typeof loadTravelersTable === 'function') {
+                            loadTravelersTable();
+                        }
+                        
                         showMessage('Traveler updated successfully! ✅');
                     } else {
                         // Fallback to localStorage
@@ -2410,6 +2533,29 @@
                 const modal = document.getElementById('travelerModal');
                 if (modal) {
                     console.log('✅ Opening traveler modal');
+                    // Reset form and set defaults
+                    const form = modal.querySelector('form');
+                    if (form) {
+                        form.reset();
+                    }
+                    // Set food preference default to Vegetarian
+                    const foodPreference = document.getElementById('travelerFoodPreference');
+                    if (foodPreference) {
+                        foodPreference.value = 'Vegetarian';
+                    }
+                    // Populate vehicle dropdown
+                    const vehicleIdField = document.getElementById('travelerVehicleId') || document.getElementById('vehicleId');
+                    if (vehicleIdField) {
+                        const vehiclesList = (typeof vehicles !== 'undefined' && Array.isArray(vehicles)) ? vehicles : [];
+                        vehicleIdField.innerHTML = '<option value="">No vehicle assigned</option>';
+                        vehiclesList.forEach(v => {
+                            const option = document.createElement('option');
+                            option.value = v.id;
+                            option.textContent = `${v.name} (${v.type} - ${v.capacity} seats)`;
+                            vehicleIdField.appendChild(option);
+                        });
+                        console.log('✅ Populated vehicle dropdown with', vehiclesList.length, 'vehicles');
+                    }
                     modal.style.display = 'block';
                     return false; // Prevent any further event handling
                 } else {
@@ -2442,6 +2588,16 @@
                 if (imagePreview) {
                     imagePreview.innerHTML = '👤';
                     imagePreview.style.background = 'var(--light-saffron)';
+                }
+                // Reset form
+                const form = modal.querySelector('form');
+                if (form) {
+                    form.reset();
+                }
+                // Set food preference default to Vegetarian
+                const foodPreference = document.getElementById('travelerFoodPreference');
+                if (foodPreference) {
+                    foodPreference.value = 'Vegetarian';
                 }
                 tempTravelerImage = '';
             }
@@ -3724,6 +3880,15 @@
                         </select>
                     </div>
 
+                    <!-- Vehicle Assignment -->
+                    <div class="form-group">
+                        <label>Assign Vehicle</label>
+                        <select id="travelerVehicleId" style="padding: 12px; border: 2px solid #ddd; border-radius: 8px; font-size: 1rem; width: 100%;">
+                            <option value="">No vehicle assigned</option>
+                        </select>
+                        <small style="color: #666;">Select a vehicle to assign this traveler</small>
+                    </div>
+
                     <!-- Health & Preferences -->
                     <div style="background: #ffe8e8; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
                         <h3 style="margin: 0 0 15px 0; font-size: 1rem; color: var(--navy);">🏥 Health & Preferences</h3>
@@ -3743,7 +3908,7 @@
                                 <label>Food Preference</label>
                                 <select id="travelerFoodPreference">
                                     <option value="">Select preference</option>
-                                    <option value="Vegetarian">Vegetarian</option>
+                                    <option value="Vegetarian" selected>Vegetarian</option>
                                     <option value="Non-Vegetarian">Non-Vegetarian</option>
                                     <option value="Vegan">Vegan</option>
                                     <option value="Jain">Jain</option>
@@ -3989,12 +4154,12 @@
                     </div>
                     <div class="form-group">
                         <label>Latitude</label>
-                        <input type="number" id="itineraryLat" step="0.000001" required placeholder="19.0176">
+                        <input type="number" id="itineraryLat" step="any" required placeholder="19.0176">
                         <small style="color: #666;">Get from Google Maps</small>
                     </div>
                     <div class="form-group">
                         <label>Longitude</label>
-                        <input type="number" id="itineraryLng" step="0.000001" required placeholder="72.8561">
+                        <input type="number" id="itineraryLng" step="any" required placeholder="72.8561">
                         <small style="color: #666;">Get from Google Maps</small>
                     </div>
                     <div class="form-group">
@@ -4388,244 +4553,95 @@
             imageCompressionQuality: 0.85
         };
 
-        // Load admin profile from localStorage
-        const savedAdminProfile = localStorage.getItem('adminProfile');
-        if (savedAdminProfile) {
-            adminUser = JSON.parse(savedAdminProfile);
-            // Set default quality if not present
-            if (!adminUser.imageCompressionQuality) {
-                adminUser.imageCompressionQuality = 0.85;
-            }
-        }
+        // Load admin profile from API (will be loaded when admin logs in or when settings section is shown)
+        // Default values are already set above
 
         // Traveler profile images (synced with main website)
         let travelerProfiles = safeGetFromStorage('travelerProfiles', {});
 
-        // Yatra Itinerary Data
-        let itinerary = [
-            {
-                id: 1,
-                day: 1,
-                date: "14 Dec 2025",
-                dateObj: new Date("2025-12-14"),
-                place: "BAPS Dadar Mandir",
-                city: "Mumbai",
-                state: "Maharashtra",
-                country: "India",
-                lat: 19.0176,
-                lng: 72.8561,
-                activities: [
-                    { time: "2:00 PM", activity: "Arrive at BAPS Dadar Mandir, Mumbai" },
-                    { time: "5:00 PM", activity: "Satsang sabha labh at Yogi sabha gruh" },
-                    { time: "8:00 PM", activity: "Pre-departure orientation" },
-                    { time: "9:00 PM", activity: "Rest - Night stay in Mumbai" }
-                ],
-                images: ["https://images.unsplash.com/photo-1566552881560-0be862a7c445?w=800"],
-                description: "Journey begins at BAPS Dadar Mandir with spiritual preparation and orientation"
-            },
-            {
-                id: 2,
-                day: 2,
-                date: "15 Dec 2025",
-                dateObj: new Date("2025-12-15"),
-                place: "Biratnagar",
-                city: "Biratnagar",
-                state: "Koshi Province",
-                country: "Nepal",
-                lat: 26.4525,
-                lng: 87.2718,
-                activities: [
-                    { time: "7:10 AM", activity: "Leave for airport" },
-                    { time: "10:15 AM", activity: "Departure flight Mumbai to Darbhanga (IndiGo 6E535)" },
-                    { time: "12:45 PM", activity: "Arrival at Darbhanga (Bihar)" },
-                    { time: "1:30 PM", activity: "Transfer to Nepal Border - Jogbani (170 km, 4 hrs)" },
-                    { time: "Evening", activity: "Night stay in Biratnagar" }
-                ],
-                images: ["https://images.unsplash.com/photo-1583037189850-1921ae7c6c22?w=800"],
-                description: "Cross international border into Nepal, beginning the sacred journey"
-            },
-            {
-                id: 3,
-                day: 3,
-                date: "16 Dec 2025",
-                dateObj: new Date("2025-12-16"),
-                place: "Janakpur",
-                city: "Janakpur",
-                state: "Madhesh Province",
-                country: "Nepal",
-                lat: 26.7288,
-                lng: 85.9266,
-                activities: [
-                    { time: "7:30 AM", activity: "Departure for Barahkshetra (56 km, 1:45 hrs)" },
-                    { time: "12:30 PM", activity: "Departure for Janakpur from Barahkshetra (170 km, 5 hrs)" },
-                    { time: "6:00 PM", activity: "Sight seeing in Janakpur" },
-                    { time: "8:15 PM", activity: "Night stay in Janakpur" }
-                ],
-                images: ["https://images.unsplash.com/photo-1609137144813-7d9921338f24?w=800"],
-                description: "Visit birthplace of Goddess Sita, explore sacred Janakpur Dham"
-            },
-            {
-                id: 4,
-                day: 4,
-                date: "17 Dec 2025",
-                dateObj: new Date("2025-12-17"),
-                place: "Chitwan National Park",
-                city: "Chitwan",
-                state: "Bagmati Province",
-                country: "Nepal",
-                lat: 27.5291,
-                lng: 84.3542,
-                activities: [
-                    { time: "8:00 AM", activity: "Sight seeing in Janakpur" },
-                    { time: "12:00 PM", activity: "Departure for Chitwan (240 km, 6 hrs)" },
-                    { time: "Evening", activity: "Night stay in Chitwan" }
-                ],
-                images: ["https://images.unsplash.com/photo-1564760055775-d63b17a55c44?w=800"],
-                description: "Journey through scenic Nepal countryside to Chitwan National Park"
-            },
-            {
-                id: 5,
-                day: 5,
-                date: "18 Dec 2025",
-                dateObj: new Date("2025-12-18"),
-                place: "Kathmandu",
-                city: "Kathmandu",
-                state: "Bagmati Province",
-                country: "Nepal",
-                lat: 27.7172,
-                lng: 85.3240,
-                activities: [
-                    { time: "6:30 AM", activity: "Safari in Chitwan National Park" },
-                    { time: "12:30 PM", activity: "Departure for Kathmandu (150 km, 5:30 hrs)" },
-                    { time: "Evening", activity: "Night stay in Kathmandu" }
-                ],
-                images: ["https://images.unsplash.com/photo-1571898223382-a7458302a2ea?w=800"],
-                description: "Wildlife safari adventure, then travel to sacred Kathmandu valley"
-            },
-            {
-                id: 6,
-                day: 6,
-                date: "19 Dec 2025",
-                dateObj: new Date("2025-12-19"),
-                place: "Kathmandu Sightseeing",
-                city: "Kathmandu",
-                state: "Bagmati Province",
-                country: "Nepal",
-                lat: 27.7172,
-                lng: 85.3240,
-                activities: [
-                    { time: "7:00 AM", activity: "Sight seeing part 1" },
-                    { time: "2:00 PM", activity: "Sight seeing part 2" },
-                    { time: "Evening", activity: "Night stay in Kathmandu" }
-                ],
-                images: ["https://images.unsplash.com/photo-1605640840605-14ac1855827b?w=800"],
-                description: "Explore ancient temples and cultural heritage of Kathmandu"
-            },
-            {
-                id: 7,
-                day: 7,
-                date: "20 Dec 2025",
-                dateObj: new Date("2025-12-20"),
-                place: "Pashupatinath Temple",
-                city: "Kathmandu",
-                state: "Bagmati Province",
-                country: "Nepal",
-                lat: 27.7104,
-                lng: 85.3489,
-                activities: [
-                    { time: "5:00 AM", activity: "Pashupatinath Jyotirlingam darshan" },
-                    { time: "6:30 AM", activity: "Depart for surprise location" },
-                    { time: "9:30 AM", activity: "Sight seeing part 1" },
-                    { time: "1:30 PM", activity: "Sight seeing part 2" },
-                    { time: "4:30 PM", activity: "Swayambhu stupa sunset viewpoint" },
-                    { time: "Evening", activity: "Night stay in Kathmandu" }
-                ],
-                images: ["https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?w=800"],
-                description: "Sacred darshan at Pashupatinath Jyotirlingam, one of holiest Shiva temples"
-            },
-            {
-                id: 8,
-                day: 8,
-                date: "21 Dec 2025",
-                dateObj: new Date("2025-12-21"),
-                place: "Pokhara",
-                city: "Pokhara",
-                state: "Gandaki Province",
-                country: "Nepal",
-                lat: 28.2096,
-                lng: 83.9856,
-                activities: [
-                    { time: "7:00 AM", activity: "Departure for Pokhara (205 km, 6:15 hrs)" },
-                    { time: "5:00 PM", activity: "Arrive at Pokhara" },
-                    { time: "8:00 PM", activity: "Satsang sabha in Pokhara" },
-                    { time: "Evening", activity: "Night stay in Pokhara" }
-                ],
-                images: ["https://images.unsplash.com/photo-1605640635484-f969f2f7f6c7?w=800"],
-                description: "Travel to beautiful Pokhara valley with stunning Himalayan views"
-            },
-            {
-                id: 9,
-                day: 9,
-                date: "22 Dec 2025",
-                dateObj: new Date("2025-12-22"),
-                place: "Muktinath Temple",
-                city: "Muktinath",
-                state: "Gandaki Province",
-                country: "Nepal",
-                lat: 28.8170,
-                lng: 83.8717,
-                activities: [
-                    { time: "6:00 AM", activity: "Depart for Muktinath (175 km, 10 hrs)" },
-                    { time: "En route", activity: "Tatopani, Jomsom Swaminarayan Mandir, Kagbeni" },
-                    { time: "6:15 PM", activity: "Arti at Muktinath Mandir" },
-                    { time: "Evening", activity: "Bathe under 108 holy water spouts" },
-                    { time: "7:30 PM", activity: "Arti, sabha & dinner - Night stay" }
-                ],
-                images: ["https://images.unsplash.com/photo-1626621341580-356d0cb9c9f9?w=800"],
-                description: "Sacred pilgrimage to Muktinath, bathing in 108 holy water spouts"
-            },
-            {
-                id: 10,
-                day: 10,
-                date: "23 Dec 2025",
-                dateObj: new Date("2025-12-23"),
-                place: "Muktinath to Pokhara",
-                city: "Pokhara",
-                state: "Gandaki Province",
-                country: "Nepal",
-                lat: 28.2096,
-                lng: 83.9856,
-                activities: [
-                    { time: "5:15 AM", activity: "Arti at Muktinath Temple" },
-                    { time: "Morning", activity: "Tapni mala, Sahajanand Namavali path" },
-                    { time: "9:00 AM", activity: "Depart for Pokhara (175 km, 10 hrs)" },
-                    { time: "5:00 PM", activity: "Gopal Yogi Ashram (Kushma)" },
-                    { time: "Evening", activity: "Night stay in Pokhara" }
-                ],
-                images: ["https://images.unsplash.com/photo-1605640840604-3e5aaaac88b7?w=800"],
-                description: "Morning prayers at Muktinath, return journey to Pokhara valley"
-            }
-        ];
+        // Yatra Itinerary Data - Initialize as empty, will load from API
+        let itinerary = [];
 
-        // Load itinerary from localStorage or use default
-        const savedItinerary = localStorage.getItem('itinerary');
-        if (savedItinerary) {
+        // Load itinerary from API (real data only)
+        async function initializeItinerary() {
             try {
-                const parsedItinerary = JSON.parse(savedItinerary);
-                // Restore Date objects
-                itinerary = parsedItinerary.map(day => ({
-                    ...day,
-                    dateObj: new Date(day.dateObj)
-                }));
-            } catch (e) {
-                console.log('Using default itinerary');
-                // Save default itinerary to localStorage
-                localStorage.setItem('itinerary', JSON.stringify(itinerary));
+                if (typeof api !== 'undefined' && api.getItinerary) {
+                    itinerary = await api.getItinerary();
+                    if (itinerary && itinerary.length > 0) {
+                        // Restore Date objects
+                        itinerary = itinerary.map(day => ({
+                            ...day,
+                            dateObj: day.dateObj ? new Date(day.dateObj) : (day.date ? new Date(day.date) : new Date())
+                        }));
+                        // Save to localStorage for caching
+                        localStorage.setItem('itinerary', JSON.stringify(itinerary));
+                        console.log('✅ Loaded itinerary from API:', itinerary.length, 'days');
+                    } else {
+                        // No itinerary in database yet
+                        itinerary = [];
+                        localStorage.removeItem('itinerary'); // Clear any old test data
+                        console.log('ℹ️ No itinerary data in database yet');
+                    }
+                } else {
+                    // Fallback: try to load from localStorage (but don't use test data)
+                    const savedItinerary = localStorage.getItem('itinerary');
+                    if (savedItinerary) {
+                        try {
+                            const parsedItinerary = JSON.parse(savedItinerary);
+                            // Only use if it looks like real data (has proper structure)
+                            if (Array.isArray(parsedItinerary) && parsedItinerary.length > 0) {
+                                itinerary = parsedItinerary.map(day => ({
+                                    ...day,
+                                    dateObj: day.dateObj ? new Date(day.dateObj) : (day.date ? new Date(day.date) : new Date())
+                                }));
+                                console.log('⚠️ Using cached itinerary (API not available)');
+                            } else {
+                                itinerary = [];
+                                localStorage.removeItem('itinerary');
+                            }
+                        } catch (e) {
+                            console.error('Error parsing saved itinerary:', e);
+                            itinerary = [];
+                            localStorage.removeItem('itinerary');
+                        }
+                    } else {
+                        itinerary = [];
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading itinerary:', error);
+                itinerary = [];
+                localStorage.removeItem('itinerary'); // Clear any corrupted data
             }
-        } else {
-            // Save default itinerary to localStorage
-            localStorage.setItem('itinerary', JSON.stringify(itinerary));
         }
+        
+        // Initialize itinerary on page load
+        initializeItinerary();
+        
+        // Clear any old test data from localStorage on first load
+        // Check if we have test data (old hardcoded itinerary with specific dates)
+        const checkForTestData = () => {
+            try {
+                const savedItinerary = localStorage.getItem('itinerary');
+                if (savedItinerary) {
+                    const parsed = JSON.parse(savedItinerary);
+                    // Check if it contains test data (Dec 2025 dates)
+                    const hasTestData = parsed.some(day => 
+                        day.date && (day.date.includes('Dec 2025') || day.date.includes('14 Dec') || day.date.includes('15 Dec'))
+                    );
+                    if (hasTestData) {
+                        console.log('🧹 Clearing test data from localStorage...');
+                        localStorage.removeItem('itinerary');
+                        itinerary = [];
+                    }
+                }
+            } catch (e) {
+                // Ignore errors
+            }
+        };
+        
+        // Run check after a short delay to ensure it runs after initialization
+        setTimeout(checkForTestData, 1000);
 
         // Sample posts for initialization
         const samplePosts = [
@@ -4840,6 +4856,10 @@
         // Load vehicles from localStorage or use default
         let vehicles = safeGetFromStorage('vehicles', []);
         console.log('📊 Loaded vehicles from storage:', vehicles.length);
+
+        // Cache for day-wise vehicle allotments pulled from backend
+        let vehicleAllotmentsByDate = {};
+        window.vehicleAllotmentsByDate = vehicleAllotmentsByDate;
         
         // Add sample vehicles if none exist (3 vehicles for 70 travelers)
         // DISABLED: Only use real data from API/database
@@ -5069,7 +5089,8 @@
             mobile: null
         };
 
-        let settings = safeGetFromStorage('yatraSettings', {
+        // Default settings (used as fallback if API fails)
+        const defaultSettings = {
             yatraTitle: "SPIRITUAL NEPAL YATRA 2025",
             startLocation: "Mumbai, India",
             destination: "Muktinath, Nepal",
@@ -5081,13 +5102,21 @@
             wakeUpTime: "06:00",
             alarmMessage: "Good morning travelers! 🌅 Time to wake up and prepare for today's sacred journey. Jay Swaminarayan!",
             alarmEnabled: true
-        });
+        };
         
-        // Save settings if they were just initialized with defaults
-        if (!localStorage.getItem('yatraSettings')) {
-            safeSetToStorage('yatraSettings', settings);
-            console.log('✅ Initialized with comprehensive settings');
-        }
+        let settings = { ...defaultSettings };
+        
+        // Load settings from API on page load
+        (async () => {
+            try {
+                const apiSettings = await api.getSettings();
+                if (apiSettings && Object.keys(apiSettings).length > 0) {
+                    settings = { ...defaultSettings, ...apiSettings };
+                }
+            } catch (error) {
+                console.warn('Could not load settings from API, using defaults:', error);
+            }
+        })();
         
         // Global form submit prevention for traveler form
         document.addEventListener('DOMContentLoaded', function() {
@@ -5248,9 +5277,12 @@
                         }, 100);
                     }
                     
-                    // Update dashboard
+                    // Update dashboard (load data first, then update)
                     if (typeof updateDashboard === 'function') {
-                        updateDashboard();
+                        // Call updateDashboard which will load data from API if needed
+                        updateDashboard().catch(err => {
+                            console.error('Error updating dashboard:', err);
+                        });
                     }
                     
                     // Always load travelers table when logged in (for dashboard stats)
@@ -5375,6 +5407,10 @@
                         // New public post awaiting approval (exclude private posts)
                         console.log('🆕 New traveler post received:', newPost.place);
                         showAdminNotification(newPost);
+                    } else if (oldPost && !oldPost.approved && newPost.approved) {
+                        // Post was just approved - notify admin
+                        console.log('✅ Post approved:', newPost.place);
+                        showMessage(`✅ Post "${newPost.place}" by ${newPost.author} has been approved!`, 'success');
                     }
                 });
                 
@@ -5618,7 +5654,9 @@
                 })();
             }
             if (sectionId === 'vehicleAllotment') {
-                populateVehicleAllotmentDateSelect();
+                (async () => {
+                    await populateVehicleAllotmentDateSelect();
+                })();
             }
             if (sectionId === 'itinerary') loadItineraryTable();
             if (sectionId === 'sections') loadSectionsTable();
@@ -5626,11 +5664,25 @@
             if (sectionId === 'announcements') {
                 loadScheduledAnnouncements();
                 loadAnnouncementHistory();
-                populateAnnouncementRecipients();
+                // Make sure data is loaded before populating dropdowns
+                populateAnnouncementRecipients().catch(err => {
+                    console.error('Error populating announcement recipients:', err);
+                });
             }
             if (sectionId === 'settings') {
                 loadAdminProfile();
                 loadAlarmSettings();
+                loadEmergencyContact();
+                loadSettings();
+                loadHeaderImages();
+            }
+            if (sectionId === 'overview') {
+                // Update dashboard when overview section is shown
+                if (typeof updateDashboard === 'function') {
+                    updateDashboard().catch(err => {
+                        console.error('Error updating dashboard in overview:', err);
+                    });
+                }
             }
             } catch (error) {
                 console.error('Error in showSection:', error);
@@ -5642,24 +5694,39 @@
             return window.showSection(sectionId);
         }
 
-        // Update Dashboard
-        function updateDashboard() {
+        // Update Dashboard - Load data from API if needed
+        async function updateDashboard() {
             try {
+                // Load data from API if not already loaded
+                if (typeof api !== 'undefined') {
+                    // Load posts if empty or undefined
+                    if (!posts || posts.length === 0) {
+                        try {
+                            console.log('📝 Loading posts from API for dashboard...');
+                            posts = await api.getPosts({});
+                            console.log('✅ Loaded posts for dashboard:', posts.length);
+                        } catch (error) {
+                            console.warn('⚠️ Could not load posts from API:', error);
+                        }
+                    }
+                    
+                    // Load travelers if empty or undefined
+                    if (!travelers || travelers.length === 0) {
+                        try {
+                            console.log('📝 Loading travelers from API for dashboard...');
+                            travelers = await api.getTravelers();
+                            console.log('✅ Loaded travelers for dashboard:', travelers.length);
+                        } catch (error) {
+                            console.warn('⚠️ Could not load travelers from API:', error);
+                        }
+                    }
+                }
+                
                 // Ensure posts and travelers are defined (fallback to empty arrays if storage blocked)
                 const safePosts = (typeof posts !== 'undefined' && Array.isArray(posts)) ? posts : [];
                 const safeTravelers = (typeof travelers !== 'undefined' && Array.isArray(travelers)) ? travelers : [];
                 
                 console.log('📊 updateDashboard - Posts:', safePosts.length, 'Travelers:', safeTravelers.length);
-                
-                // If data is empty, try to re-initialize (in case initialization failed)
-                // DISABLED: Don't load sample posts - only use real API data
-                if (false && safePosts.length === 0 && typeof samplePosts !== 'undefined') {
-                    console.warn('⚠️ Posts empty, re-initializing...');
-                    posts = [...samplePosts];
-                }
-                if (safeTravelers.length === 0) {
-                    console.warn('⚠️ Travelers empty, may need to refresh page');
-                }
                 
             // Filter out private posts from dashboard stats
                 const publicPosts = (typeof posts !== 'undefined' && Array.isArray(posts)) ? posts.filter(p => p && !p.isPrivate) : [];
@@ -5891,29 +5958,87 @@
         // ==================== POSTS CRUD OPERATIONS (MySQL Backend) ====================
         async function approvePost(id) {
             try {
+                console.log(`📝 Attempting to approve post ${id}...`);
+                console.log(`📝 Current posts array length: ${posts.length}`);
+                console.log(`📝 Post ${id} current status:`, posts.find(p => p.id === id));
+                
+                // Check if user is authenticated (check both adminToken and adminData)
+                const adminToken = localStorage.getItem('adminToken');
+                const adminData = localStorage.getItem('adminData');
+                let token = adminToken;
+                
+                if (!token && adminData) {
+                    try {
+                        const admin = JSON.parse(adminData);
+                        token = admin.token;
+                    } catch (e) {
+                        console.error('Error parsing adminData:', e);
+                    }
+                }
+                
+                if (!token) {
+                    console.error('❌ No admin token found! adminToken:', adminToken, 'adminData:', adminData);
+                    showMessage('Please login first to approve posts.', 'error');
+                    return;
+                }
+                
+                console.log(`✅ Admin token found, proceeding with approval...`);
+                
                 // Update via API
                 if (typeof api !== 'undefined' && api.approvePost) {
-                    await api.approvePost(id, true);
+                    console.log(`📤 Sending approval request for post ${id}...`);
+                    const response = await api.approvePost(id, true);
+                    console.log('✅ Post approval response:', response);
+                    
+                    if (!response || !response.post) {
+                        throw new Error('Invalid response from server');
+                    }
+                    
+                    if (!response.post.approved) {
+                        console.error('❌ Post was not approved! Response:', response);
+                        showMessage('Error: Post approval failed. Please check console for details.', 'error');
+                        return;
+                    }
+                    
                     // Clear cache and reload
                     if (api.clearCacheFor) {
                         api.clearCacheFor('/posts');
                     }
-                    // Reload posts from API
+                    
+                    // Reload posts from API to get latest data
                     posts = await api.getPosts({});
+                    
+                    // Update the post in the local array
+                    const postIndex = posts.findIndex(p => p.id === id);
+                    if (postIndex >= 0) {
+                        posts[postIndex].approved = response.post.approved;
+                        console.log(`✅ Updated post ${id} approval status: ${response.post.approved}`);
+                    } else {
+                        console.warn(`⚠️ Post ${id} not found in posts array after reload`);
+                    }
+                    
                     showMessage('Post approved successfully! 🎉 Now visible on website.');
                 } else {
                     throw new Error('API not available');
                 }
             } catch (error) {
-                console.error('Error approving post:', error);
-                showMessage('Error approving post. Please try again.', 'error');
+                console.error('❌ Error approving post:', error);
+                console.error('Error details:', {
+                    message: error.message,
+                    stack: error.stack,
+                    response: error.response
+                });
+                showMessage(`Error approving post: ${error.message}. Please try again.`, 'error');
                 return;
             }
                 
                 loadPostsTable();
                 updateDashboard();
             }
+        
+        // Make sure approvePost is available globally
         window.approvePost = approvePost;
+        console.log('✅ approvePost function assigned to window:', typeof window.approvePost);
 
         function viewPost(id) {
             const post = posts.find(p => p.id === id);
@@ -6611,62 +6736,138 @@
 
         // Itinerary Management
         // ==================== ITINERARY LOAD OPERATIONS (MySQL Backend) ====================
+        // Guard to prevent multiple simultaneous calls
+        let isLoadingItineraryTable = false;
+        
         async function loadItineraryTable() {
-            const tbody = document.getElementById('itineraryTable');
-            tbody.innerHTML = '';
-
-            // Load itinerary from API
-            try {
-                if (typeof api !== 'undefined' && api.getItinerary) {
-                    itinerary = await api.getItinerary();
-                } else {
-                    console.warn('API not available, using cached itinerary');
-                }
-            } catch (error) {
-                console.error('Error loading itinerary from API:', error);
-                // Continue with existing itinerary array
-            }
-
-            if (!itinerary || itinerary.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 30px;">No itinerary days added yet</td></tr>';
+            // Prevent multiple simultaneous calls
+            if (isLoadingItineraryTable) {
+                console.log('⏸️ loadItineraryTable already in progress, skipping...');
                 return;
             }
-
-            // Remove duplicates - keep only the first occurrence of each ID or day
-            const seen = new Set();
-            const uniqueItinerary = itinerary.filter(day => {
-                // Use ID if available, otherwise use day number as unique identifier
-                const key = day.id ? `id_${day.id}` : `day_${day.day}`;
-                if (seen.has(key)) {
-                    console.warn(`⚠️ Duplicate itinerary entry detected and removed: ${key}`, day);
-                    return false;
+            
+            isLoadingItineraryTable = true;
+            
+            try {
+                const tbody = document.getElementById('itineraryTable');
+                if (!tbody) {
+                    console.warn('itineraryTable tbody not found');
+                    return;
                 }
-                seen.add(key);
-                return true;
-            });
+                
+                // Clear table first
+                tbody.innerHTML = '';
 
-            // Update the itinerary array with deduplicated data
-            itinerary = uniqueItinerary;
+                // Clear cache first to ensure fresh data
+                if (typeof api !== 'undefined' && api.clearCacheFor) {
+                    api.clearCacheFor('/itinerary');
+                    console.log('🗑️ Cleared itinerary cache to prevent duplicates');
+                }
 
-            // Sort by day number
-            itinerary.sort((a, b) => a.day - b.day);
+                // Load itinerary from API (fresh, not cached)
+                try {
+                    if (typeof api !== 'undefined' && api.getItinerary) {
+                        itinerary = await api.getItinerary();
+                        // Ensure dateObj is a Date object for each day
+                        if (itinerary && Array.isArray(itinerary)) {
+                            itinerary = itinerary.map(day => {
+                                if (day.dateObj) {
+                                    // Convert dateObj to Date if it's a string
+                                    day.dateObj = day.dateObj instanceof Date 
+                                        ? day.dateObj 
+                                        : new Date(day.dateObj);
+                                } else if (day.date) {
+                                    // Fallback: create dateObj from date string
+                                    day.dateObj = new Date(day.date);
+                                }
+                                return day;
+                            });
+                        }
+                        console.log(`📥 Loaded ${itinerary ? itinerary.length : 0} itinerary days from API`);
+                    } else {
+                        console.warn('API not available, using cached itinerary');
+                    }
+                } catch (error) {
+                    console.error('Error loading itinerary from API:', error);
+                    // Continue with existing itinerary array
+                }
 
-            itinerary.forEach(day => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td style="font-weight: 600; color: var(--saffron); white-space: nowrap;">Day ${day.day}</td>
-                    <td>${day.date}</td>
-                    <td style="font-weight: 500;">${day.place}</td>
-                    <td>${day.city}</td>
-                    <td>${day.country}</td>
-                    <td style="text-align: center;">${day.activities ? day.activities.length : 0}</td>
-                    <td style="white-space: nowrap;">
-                        <button class="action-btn btn-edit" onclick="editItinerary(${day.id})" title="Edit">✏️</button>
-                        <button class="action-btn btn-delete" onclick="deleteItinerary(${day.id})" title="Delete">🗑</button>
-                    </td>
-                `;
-                tbody.appendChild(row);
-            });
+                if (!itinerary || itinerary.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 30px;">No itinerary days added yet</td></tr>';
+                    return;
+                }
+
+                // Remove duplicates - keep only the first occurrence of each ID or day
+                // Use a Map to track both by ID and by day number to catch all duplicates
+                const seenById = new Set();
+                const seenByDay = new Set();
+                const uniqueItinerary = [];
+                const duplicatesRemoved = [];
+
+                itinerary.forEach(day => {
+                    let isDuplicate = false;
+                    
+                    // Check by ID first (most reliable)
+                    if (day.id) {
+                        if (seenById.has(day.id)) {
+                            isDuplicate = true;
+                            duplicatesRemoved.push({ type: 'id', value: day.id, day: day });
+                        } else {
+                            seenById.add(day.id);
+                        }
+                    }
+                    
+                    // Also check by day number (in case IDs are missing or duplicated)
+                    if (day.day !== undefined && day.day !== null) {
+                        if (seenByDay.has(day.day)) {
+                            // Only mark as duplicate if we haven't already marked it by ID
+                            if (!isDuplicate) {
+                                isDuplicate = true;
+                                duplicatesRemoved.push({ type: 'day', value: day.day, day: day });
+                            }
+                        } else {
+                            seenByDay.add(day.day);
+                        }
+                    }
+                    
+                    if (!isDuplicate) {
+                        uniqueItinerary.push(day);
+                    }
+                });
+
+                if (duplicatesRemoved.length > 0) {
+                    console.warn(`⚠️ Removed ${duplicatesRemoved.length} duplicate itinerary entries:`, duplicatesRemoved);
+                    showMessage(`⚠️ Removed ${duplicatesRemoved.length} duplicate itinerary entry(ies)`, 'warning');
+                }
+
+                // Update the itinerary array with deduplicated data
+                itinerary = uniqueItinerary;
+
+                // Sort by day number
+                itinerary.sort((a, b) => a.day - b.day);
+
+                itinerary.forEach(day => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td style="font-weight: 600; color: var(--saffron); white-space: nowrap;">Day ${day.day}</td>
+                        <td>${day.date}</td>
+                        <td style="font-weight: 500;">${day.place}</td>
+                        <td>${day.city}</td>
+                        <td>${day.country}</td>
+                        <td style="text-align: center;">${day.activities ? day.activities.length : 0}</td>
+                        <td style="white-space: nowrap;">
+                            <button class="action-btn btn-edit" onclick="editItinerary(${day.id})" title="Edit">✏️</button>
+                            <button class="action-btn btn-delete" onclick="deleteItinerary(${day.id})" title="Delete">🗑</button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            } catch (error) {
+                console.error('Error in loadItineraryTable:', error);
+            } finally {
+                // Always reset the loading flag
+                isLoadingItineraryTable = false;
+            }
         }
 
         // ==================== ENHANCED ACTIVITIES MANAGEMENT ====================
@@ -6735,7 +6936,15 @@
         function removeActivityField(activityId) {
             const card = document.getElementById(activityId);
             if (card) {
-                card.remove();
+                // Ensure the card is removed from DOM completely
+                if (card.parentElement) {
+                    card.parentElement.removeChild(card);
+                } else {
+                    card.remove();
+                }
+                console.log(`✅ Removed activity field: ${activityId}`);
+            } else {
+                console.warn(`⚠️ Activity field not found: ${activityId}`);
             }
         }
         window.removeActivityField = removeActivityField;
@@ -6764,10 +6973,47 @@
         
         function loadActivitiesIntoForm(activities) {
             const container = document.getElementById('itineraryActivitiesContainer');
-            container.innerHTML = '';
+            if (!container) {
+                console.warn('⚠️ Activities container not found');
+                return;
+            }
             
-            if (activities && activities.length > 0) {
+            // Clear container completely to prevent duplication
+            // Remove all child nodes
+            while (container.firstChild) {
+                container.removeChild(container.firstChild);
+            }
+            container.innerHTML = ''; // Double-clear to be safe
+            
+            // Reset activity counter to prevent ID conflicts
+            activityFieldCounter = 0;
+            
+            // Deduplicate activities before loading
+            const uniqueActivities = [];
+            const seenActivities = new Set();
+            
+            if (activities && Array.isArray(activities) && activities.length > 0) {
                 activities.forEach(activity => {
+                    const time = activity.time || '';
+                    const place = activity.place || activity.activity || '';
+                    const description = activity.description || '';
+                    const image = activity.image || '';
+                    
+                    // Create unique key
+                    const activityKey = `${time}|${place}|${description}`;
+                    
+                    // Only add if not seen before
+                    if (!seenActivities.has(activityKey)) {
+                        seenActivities.add(activityKey);
+                        uniqueActivities.push(activity);
+                    } else {
+                        console.warn('⚠️ Duplicate activity removed during load:', { time, place });
+                    }
+                });
+            }
+            
+            if (uniqueActivities.length > 0) {
+                uniqueActivities.forEach(activity => {
                     addActivityField(
                         activity.time || '',
                         activity.place || activity.activity || '',
@@ -6779,44 +7025,96 @@
                 // Add one empty field by default
                 addActivityField();
             }
+            
+            console.log(`✅ Loaded ${uniqueActivities.length} unique activities into form`);
         }
         
         function collectActivitiesFromForm() {
-            const activityCards = document.querySelectorAll('.activity-field-card');
+            // Only query cards within the specific activities container to avoid duplicates
+            const container = document.getElementById('itineraryActivitiesContainer');
+            if (!container) {
+                console.warn('⚠️ Activities container not found');
+                return [];
+            }
+            
+            // Only get cards that are direct children of the container
+            const activityCards = container.querySelectorAll(':scope > .activity-field-card');
             const activities = [];
+            const seenActivities = new Set(); // Track seen activities to prevent duplicates
             
             activityCards.forEach(card => {
-                const time = card.querySelector('.activity-time').value.trim();
-                const place = card.querySelector('.activity-place').value.trim();
-                const description = card.querySelector('.activity-description').value.trim();
-                const imageUrl = card.querySelector('.activity-image-url').value.trim();
+                // Skip if card is not actually in the DOM or has been removed
+                if (!card.parentElement || !container.contains(card)) {
+                    return;
+                }
                 
-                if (time || place) { // At least time or place should be filled
-                    activities.push({
-                        time: time,
-                        activity: place,
-                        place: place,
-                        description: description,
-                        image: imageUrl
-                    });
+                const time = card.querySelector('.activity-time')?.value.trim() || '';
+                const place = card.querySelector('.activity-place')?.value.trim() || '';
+                const description = card.querySelector('.activity-description')?.value.trim() || '';
+                const imageUrl = card.querySelector('.activity-image-url')?.value.trim() || '';
+                
+                // At least time or place should be filled
+                if (time || place) {
+                    // Create a unique key for this activity to detect duplicates
+                    const activityKey = `${time}|${place}|${description}`;
+                    
+                    // Only add if we haven't seen this exact activity before
+                    if (!seenActivities.has(activityKey)) {
+                        seenActivities.add(activityKey);
+                        activities.push({
+                            time: time,
+                            activity: place,
+                            place: place,
+                            description: description,
+                            image: imageUrl
+                        });
+                    } else {
+                        console.warn('⚠️ Duplicate activity detected and skipped:', { time, place });
+                    }
                 }
             });
             
+            console.log(`✅ Collected ${activities.length} unique activities from form`);
             return activities;
         }
         
         // ==================== END ENHANCED ACTIVITIES MANAGEMENT ====================
 
         function openItineraryModal() {
+            // Clear activities and images containers FIRST
+            const activitiesContainer = document.getElementById('itineraryActivitiesContainer');
+            if (activitiesContainer) {
+                activitiesContainer.innerHTML = '';
+            }
+            const imagesContainer = document.getElementById('itineraryImagesContainer');
+            if (imagesContainer) {
+                imagesContainer.innerHTML = '';
+            }
+            
+            // Reset activity counter for new entry
+            activityFieldCounter = 0;
+            
+            // Reset form and clear ID for new entry
+            const form = document.querySelector('#itineraryModal form');
+            if (form) {
+                form.reset();
+            }
+            const idField = document.getElementById('itineraryId');
+            if (idField) {
+                idField.value = '';
+                console.log('✅ Cleared itinerary ID for new entry');
+            }
+            
             document.getElementById('itineraryModalTitle').textContent = 'Add Itinerary Day';
             document.getElementById('itineraryModal').style.display = 'block';
             // Set next day number
             const nextDay = itinerary.length > 0 ? Math.max(...itinerary.map(d => d.day)) + 1 : 1;
             document.getElementById('itineraryDay').value = nextDay;
             
-            // Clear and add one image input
-            const container = document.getElementById('itineraryImagesContainer');
-            container.innerHTML = '';
+            // Add one empty activity field by default
+            addActivityField();
+            
+            // Add one image input
             addItineraryImageInput();
             
             // Initialize with one empty activity field
@@ -6825,11 +7123,32 @@
         window.openItineraryModal = openItineraryModal;
 
         function closeItineraryModal() {
-            document.getElementById('itineraryModal').style.display = 'none';
-            document.querySelector('#itineraryModal form').reset();
-            document.getElementById('itineraryId').value = '';
-            document.getElementById('itineraryImagesContainer').innerHTML = '';
-            document.getElementById('itineraryActivitiesContainer').innerHTML = '';
+            const modal = document.getElementById('itineraryModal');
+            if (modal) {
+                modal.style.display = 'none';
+                // Reset form and clear ID AFTER modal is closed
+                const form = modal.querySelector('form');
+                if (form) {
+                    form.reset();
+                }
+                const idField = document.getElementById('itineraryId');
+                if (idField) {
+                    idField.value = '';
+                }
+                const imagesContainer = document.getElementById('itineraryImagesContainer');
+                if (imagesContainer) {
+                    imagesContainer.innerHTML = '';
+                }
+                const activitiesContainer = document.getElementById('itineraryActivitiesContainer');
+                if (activitiesContainer) {
+                    activitiesContainer.innerHTML = '';
+                }
+                // Reset modal title
+                const title = document.getElementById('itineraryModalTitle');
+                if (title) {
+                    title.textContent = 'Add Itinerary Day';
+                }
+            }
         }
         window.closeItineraryModal = closeItineraryModal;
 
@@ -6862,7 +7181,11 @@
         async function handleItinerarySubmit(event) {
             event.preventDefault();
 
-            const id = document.getElementById('itineraryId').value;
+            const idField = document.getElementById('itineraryId');
+            const id = idField ? String(idField.value).trim() : '';
+            
+            // Debug logging
+            console.log('📤 Submitting itinerary form. ID field value:', id, 'Type:', typeof id, 'Is valid number:', !isNaN(parseInt(id)));
             
             // Collect activities from structured form
             const activities = collectActivitiesFromForm();
@@ -6894,11 +7217,20 @@
             };
 
             try {
-            if (id) {
+            // Improved ID validation - check if ID exists and is a valid positive integer
+            const parsedId = parseInt(id);
+            const isValidId = id !== '' && !isNaN(parsedId) && parsedId > 0;
+            
+            if (isValidId) {
                     // Update existing itinerary day via API
+                    console.log('📝 Updating itinerary day with ID:', parsedId);
                     if (typeof api !== 'undefined' && api.updateItineraryDay) {
-                        await api.updateItineraryDay(parseInt(id), dayData);
+                        await api.updateItineraryDay(parsedId, dayData);
                         // Clear cache and reload
+                        if (api.clearCacheFor) {
+                            api.clearCacheFor('/itinerary');
+                        }
+                        // Clear cache first
                         if (api.clearCacheFor) {
                             api.clearCacheFor('/itinerary');
                         }
@@ -6909,6 +7241,22 @@
                         throw new Error('API not available');
                 }
             } else {
+                    // Add new itinerary day - ID is empty or invalid
+                    console.log('➕ Creating new itinerary day (ID is empty or invalid)');
+                    // Check for duplicate day number before creating
+                    if (typeof api !== 'undefined' && api.getItinerary) {
+                        // Clear cache to get fresh data
+                        if (api.clearCacheFor) {
+                            api.clearCacheFor('/itinerary');
+                        }
+                        const existingItinerary = await api.getItinerary();
+                        const duplicateDay = existingItinerary.find(d => d.day === dayData.day);
+                        if (duplicateDay) {
+                            showMessage(`⚠️ Day ${dayData.day} already exists! Please edit the existing entry or use a different day number.`, 'error');
+                            return;
+                        }
+                    }
+                    
                     // Add new itinerary day via API
                     if (typeof api !== 'undefined' && api.createItineraryDay) {
                         await api.createItineraryDay(dayData);
@@ -6930,7 +7278,8 @@
             }
             
             closeItineraryModal();
-            loadItineraryTable();
+            // Force reload table with cache cleared
+            await loadItineraryTable();
         }
 
         // ==================== ITINERARY SYNC SYSTEM (MySQL Backend) ====================
@@ -6954,12 +7303,60 @@
 
         function editItinerary(id) {
             const day = itinerary.find(d => d.id === id);
-            if (!day) return;
+            if (!day) {
+                console.error('❌ Itinerary day not found with ID:', id);
+                return;
+            }
 
+            console.log('✏️ Editing itinerary day:', day);
+            
+            // Clear activities and images containers FIRST before resetting form
+            const activitiesContainer = document.getElementById('itineraryActivitiesContainer');
+            if (activitiesContainer) {
+                activitiesContainer.innerHTML = '';
+            }
+            const imagesContainer = document.getElementById('itineraryImagesContainer');
+            if (imagesContainer) {
+                imagesContainer.innerHTML = '';
+            }
+            
+            // Set ID FIRST before resetting form to ensure it's preserved
+            const idField = document.getElementById('itineraryId');
+            if (idField) {
+                idField.value = String(day.id); // Ensure it's a string
+                console.log('✅ Set itinerary ID to:', day.id, '(type:', typeof idField.value, ')');
+            }
+            
+            // Reset form AFTER setting ID (but hidden fields aren't affected by reset)
+            const form = document.querySelector('#itineraryModal form');
+            if (form) {
+                form.reset();
+                // Re-set the ID after reset to ensure it's not cleared
+                if (idField) {
+                    idField.value = String(day.id);
+                }
+            }
+            
             document.getElementById('itineraryModalTitle').textContent = 'Edit Itinerary Day';
-            document.getElementById('itineraryId').value = day.id;
             document.getElementById('itineraryDay').value = day.day;
-            document.getElementById('itineraryDate').value = day.dateObj.toISOString().split('T')[0];
+            
+            // Safely convert dateObj to Date and format for input
+            let dateValue = '';
+            if (day.dateObj) {
+                const dateObj = day.dateObj instanceof Date ? day.dateObj : new Date(day.dateObj);
+                if (!isNaN(dateObj.getTime())) {
+                    dateValue = dateObj.toISOString().split('T')[0];
+                }
+            }
+            // Fallback to date string if dateObj is not available
+            if (!dateValue && day.date) {
+                // Try to parse the date string
+                const parsedDate = new Date(day.date);
+                if (!isNaN(parsedDate.getTime())) {
+                    dateValue = parsedDate.toISOString().split('T')[0];
+                }
+            }
+            document.getElementById('itineraryDate').value = dateValue;
             document.getElementById('itineraryPlace').value = day.place;
             document.getElementById('itineraryCity').value = day.city;
             document.getElementById('itineraryState').value = day.state || '';
@@ -7367,12 +7764,12 @@
                         </div>
                         <div>
                             <label style="display: block; font-weight: 600; color: var(--navy); margin-bottom: 5px;">Latitude</label>
-                            <input type="number" step="0.000001" value="${day.lat}" onchange="updateParsedDay(${index}, 'lat', parseFloat(this.value))" 
+                            <input type="number" step="any" value="${day.lat}" onchange="updateParsedDay(${index}, 'lat', parseFloat(this.value))" 
                                 style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 5px;">
                         </div>
                         <div>
                             <label style="display: block; font-weight: 600; color: var(--navy); margin-bottom: 5px;">Longitude</label>
-                            <input type="number" step="0.000001" value="${day.lng}" onchange="updateParsedDay(${index}, 'lng', parseFloat(this.value))" 
+                            <input type="number" step="any" value="${day.lng}" onchange="updateParsedDay(${index}, 'lng', parseFloat(this.value))" 
                                 style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 5px;">
                         </div>
                     </div>
@@ -7502,13 +7899,16 @@
         function uploadHeaderImage(event, type) {
             const file = event.target.files[0];
             if (file) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    headerImages[type] = e.target.result;
-                    updateHeaderImagesGrid();
-                    showMessage(`${type.charAt(0).toUpperCase() + type.slice(1)} header image uploaded! Click 'Save' to apply changes. 📷`);
-                };
-                reader.readAsDataURL(file);
+                // Compress header images to save space
+                compressImage(file, (compressedUrl) => {
+                    if (compressedUrl) {
+                        headerImages[type] = compressedUrl;
+                        updateHeaderImagesGrid();
+                        showMessage(`${type.charAt(0).toUpperCase() + type.slice(1)} header image uploaded and compressed! Click 'Save' to apply changes. 📷`);
+                    } else {
+                        showMessage('Error processing header image. Please try again.', 'error');
+                    }
+                });
             }
         }
 
@@ -7544,62 +7944,224 @@
             }
         }
         
-        function saveHeaderImages() {
-            localStorage.setItem('headerImages', JSON.stringify(headerImages));
-            showMessage('✅ Header images saved successfully! Changes applied to website.');
+        async function saveHeaderImages() {
+            try {
+                console.log('💾 Saving header images to database...');
+                console.log('📸 Current headerImages:', headerImages);
+                
+                // Verify we have at least one image
+                if (!headerImages.desktop && !headerImages.mobile) {
+                    showMessage('Please upload at least one header image before saving.', 'error');
+                    return;
+                }
+                
+                // Save header images to database via API
+                // The backend will automatically detect it's an object and save as JSON type
+                console.log('📤 Sending to API...');
+                const result = await api.updateSetting('headerImages', headerImages);
+                console.log('📦 API response:', result);
+                
+                // Verify the save worked by immediately fetching it back
+                console.log('🔍 Verifying save by fetching back...');
+                const verifyResult = await api.getSetting('headerImages');
+                console.log('✅ Verification - header images in database:', verifyResult);
+                
+                // Also clear API cache to force refresh
+                if (typeof api !== 'undefined' && api.clearCacheFor) {
+                    api.clearCacheFor('settings');
+                }
+                
+                console.log('✅ Header images saved successfully to database');
+                showMessage('✅ Header images saved successfully! Changes applied to website.');
+            } catch (error) {
+                console.error('❌ Error saving header images:', error);
+                console.error('❌ Error details:', error.message);
+                console.error('❌ Full error:', error);
+                showMessage(`Failed to save header images: ${error.message}. Please check console for details.`, 'error');
+            }
         }
-
-        // Alarm Functions
-        function setWakeUpAlarm() {
-            const alarmData = {
-                time: document.getElementById('wakeUpTime').value,
-                message: document.getElementById('alarmMessage').value,
-                enabled: document.getElementById('alarmEnabled').checked,
-                timestamp: Date.now()
-            };
-            
-            localStorage.setItem('wakeUpAlarm', JSON.stringify(alarmData));
-            showMessage('Wake-up alarm set successfully! 🔔');
-        }
-
-        function testAlarm() {
-            const message = document.getElementById('alarmMessage').value;
-            const alarmData = {
-                time: new Date().toTimeString().slice(0, 5),
-                message: message,
-                enabled: true,
-                timestamp: Date.now(),
-                test: true
-            };
-            
-            localStorage.setItem('wakeUpAlarm', JSON.stringify(alarmData));
-            showMessage('Test alarm triggered! Check traveler devices. 🔔', 'info');
-        }
-
-        function loadAlarmSettings() {
-            const savedAlarm = localStorage.getItem('wakeUpAlarm');
-            if (savedAlarm) {
-                const alarmData = JSON.parse(savedAlarm);
-                document.getElementById('wakeUpTime').value = alarmData.time || '06:00';
-                document.getElementById('alarmMessage').value = alarmData.message || 'Good morning travelers! 🌅 Time to wake up and prepare for today\'s journey!';
-                document.getElementById('alarmEnabled').checked = alarmData.enabled || false;
+        
+        async function loadHeaderImages() {
+            try {
+                console.log('📥 Loading header images from database...');
+                // Load header images from API
+                const result = await api.getSetting('headerImages');
+                console.log('📦 Header images from API:', result);
+                
+                if (result && result.value) {
+                    // Merge with existing, but prioritize database values
+                    headerImages = { desktop: null, mobile: null, ...result.value };
+                    updateHeaderImagesGrid();
+                    console.log('✅ Header images loaded from database:', headerImages);
+                } else {
+                    console.log('ℹ️ No header images found in database, keeping current state');
+                    // Don't reset if we already have images loaded
+                    if (!headerImages.desktop && !headerImages.mobile) {
+                        headerImages = { desktop: null, mobile: null };
+                    }
+                }
+            } catch (error) {
+                console.warn('⚠️ Error loading header images from API:', error);
+                // If setting doesn't exist yet, use empty object
+                headerImages = { desktop: null, mobile: null };
+                console.log('ℹ️ Using empty header images state');
             }
         }
 
-        function saveSettings() {
-            const settingsData = {
-                title: document.getElementById('yatraTitle').value,
-                startLocation: document.getElementById('startLocation').value,
-                destination: document.getElementById('destination').value,
-                startDate: document.getElementById('startDate').value,
-                endDate: document.getElementById('endDate').value,
-                topContributorsCount: parseInt(document.getElementById('topContributorsCount').value) || 5
-            };
+        // Alarm Functions
+        async function setWakeUpAlarm() {
+            try {
+                const alarmData = {
+                    wakeUpTime: document.getElementById('wakeUpTime').value,
+                    alarmMessage: document.getElementById('alarmMessage').value,
+                    alarmEnabled: document.getElementById('alarmEnabled').checked
+                };
+                
+                console.log('💾 Saving alarm settings to database:', alarmData);
+                
+                // Save to database via API
+                await api.updateSettings(alarmData);
+                
+                // Verify the save worked
+                const verifyResult = await api.getSettings();
+                console.log('✅ Alarm settings saved and verified:', {
+                    wakeUpTime: verifyResult.wakeUpTime,
+                    alarmEnabled: verifyResult.alarmEnabled
+                });
+                
+                showMessage('Wake-up alarm set successfully! 🔔');
+            } catch (error) {
+                console.error('❌ Error saving alarm settings:', error);
+                showMessage(`Failed to save alarm settings: ${error.message}. Please try again.`, 'error');
+            }
+        }
 
-            settings.topContributorsCount = settingsData.topContributorsCount;
+        async function testAlarm() {
+            try {
+                const message = document.getElementById('alarmMessage').value;
+                const alarmData = {
+                    wakeUpTime: new Date().toTimeString().slice(0, 5),
+                    alarmMessage: message,
+                    alarmEnabled: true,
+                    alarmTest: true,
+                    alarmTestTimestamp: Date.now()
+                };
+                
+                // Save test alarm to database via API
+                await api.updateSettings(alarmData);
+                
+                showMessage('Test alarm triggered! Check traveler devices. 🔔', 'info');
+            } catch (error) {
+                console.error('Error triggering test alarm:', error);
+                showMessage('Failed to trigger test alarm. Please try again.', 'error');
+            }
+        }
 
-            console.log('Settings saved:', settingsData);
-            showMessage('Settings saved successfully! 🎉');
+        async function loadAlarmSettings() {
+            try {
+                // Load alarm settings from API
+                const apiSettings = await api.getSettings();
+                
+                if (apiSettings.wakeUpTime) {
+                    document.getElementById('wakeUpTime').value = apiSettings.wakeUpTime;
+                } else {
+                    document.getElementById('wakeUpTime').value = '06:00';
+                }
+                
+                if (apiSettings.alarmMessage) {
+                    document.getElementById('alarmMessage').value = apiSettings.alarmMessage;
+                } else {
+                    document.getElementById('alarmMessage').value = 'Good morning travelers! 🌅 Time to wake up and prepare for today\'s journey!';
+                }
+                
+                document.getElementById('alarmEnabled').checked = apiSettings.alarmEnabled !== false;
+            } catch (error) {
+                console.warn('Error loading alarm settings from API:', error);
+                // Use default values if API fails
+                if (settings.wakeUpTime) {
+                    document.getElementById('wakeUpTime').value = settings.wakeUpTime;
+                }
+                if (settings.alarmMessage) {
+                    document.getElementById('alarmMessage').value = settings.alarmMessage;
+                }
+                document.getElementById('alarmEnabled').checked = settings.alarmEnabled !== false;
+            }
+        }
+
+        async function saveSettings() {
+            try {
+                const settingsData = {
+                    yatraTitle: document.getElementById('yatraTitle').value,
+                    startLocation: document.getElementById('startLocation').value,
+                    destination: document.getElementById('destination').value,
+                    startDate: document.getElementById('startDate').value,
+                    endDate: document.getElementById('endDate').value,
+                    topContributorsCount: parseInt(document.getElementById('topContributorsCount').value) || 5
+                };
+
+                // Save to database via API
+                await api.updateSettings(settingsData);
+                
+                // Update local settings object
+                Object.assign(settings, settingsData);
+
+                console.log('Settings saved:', settingsData);
+                showMessage('Settings saved successfully! 🎉');
+            } catch (error) {
+                console.error('Error saving settings:', error);
+                showMessage('Failed to save settings. Please try again.', 'error');
+            }
+        }
+        
+        async function loadSettings() {
+            try {
+                // Load settings from API
+                const apiSettings = await api.getSettings();
+                
+                // Update local settings object
+                Object.assign(settings, apiSettings);
+                
+                // Load into form fields
+                if (apiSettings.yatraTitle) {
+                    document.getElementById('yatraTitle').value = apiSettings.yatraTitle;
+                }
+                if (apiSettings.startLocation) {
+                    document.getElementById('startLocation').value = apiSettings.startLocation;
+                }
+                if (apiSettings.destination) {
+                    document.getElementById('destination').value = apiSettings.destination;
+                }
+                if (apiSettings.startDate) {
+                    document.getElementById('startDate').value = apiSettings.startDate;
+                }
+                if (apiSettings.endDate) {
+                    document.getElementById('endDate').value = apiSettings.endDate;
+                }
+                if (apiSettings.topContributorsCount) {
+                    document.getElementById('topContributorsCount').value = apiSettings.topContributorsCount;
+                }
+            } catch (error) {
+                console.error('Error loading settings:', error);
+                // Use default values if API fails
+                if (settings.yatraTitle) {
+                    document.getElementById('yatraTitle').value = settings.yatraTitle;
+                }
+                if (settings.startLocation) {
+                    document.getElementById('startLocation').value = settings.startLocation;
+                }
+                if (settings.destination) {
+                    document.getElementById('destination').value = settings.destination;
+                }
+                if (settings.startDate) {
+                    document.getElementById('startDate').value = settings.startDate;
+                }
+                if (settings.endDate) {
+                    document.getElementById('endDate').value = settings.endDate;
+                }
+                if (settings.topContributorsCount) {
+                    document.getElementById('topContributorsCount').value = settings.topContributorsCount;
+                }
+            }
         }
 
         // Utility Functions
@@ -8136,18 +8698,42 @@
             }
         }
 
-        function saveAdminProfile() {
-            adminUser.name = document.getElementById('adminName').value;
-            adminUser.includeInContributors = document.getElementById('adminIncludeInContributors').checked;
-            adminUser.imageCompressionQuality = parseFloat(document.getElementById('imageCompressionQuality').value);
-            
-            localStorage.setItem('adminProfile', JSON.stringify(adminUser));
-            showMessage('Admin profile saved successfully!');
+        async function saveAdminProfile() {
+            try {
+                adminUser.name = document.getElementById('adminName').value;
+                adminUser.includeInContributors = document.getElementById('adminIncludeInContributors').checked;
+                adminUser.imageCompressionQuality = parseFloat(document.getElementById('imageCompressionQuality').value);
+                
+                // Save to database via API
+                await api.updateAdminProfile(adminUser);
+                
+                showMessage('Admin profile saved successfully!');
+            } catch (error) {
+                console.error('Error saving admin profile:', error);
+                showMessage('Failed to save admin profile. Please try again.', 'error');
+            }
         }
 
-        function loadAdminProfile() {
-            document.getElementById('adminName').value = adminUser.name;
-            document.getElementById('adminIncludeInContributors').checked = adminUser.includeInContributors;
+        async function loadAdminProfile() {
+            try {
+                // Load admin profile from API
+                const adminData = localStorage.getItem('adminData');
+                if (adminData) {
+                    const admin = JSON.parse(adminData);
+                    if (admin.email) {
+                        const profile = await api.getAdminProfile(admin.email);
+                        if (profile) {
+                            Object.assign(adminUser, profile);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.warn('Error loading admin profile from API:', error);
+            }
+            
+            // Load into form fields
+            document.getElementById('adminName').value = adminUser.name || 'Admin';
+            document.getElementById('adminIncludeInContributors').checked = adminUser.includeInContributors !== false;
             document.getElementById('imageCompressionQuality').value = adminUser.imageCompressionQuality || 0.85;
             
             if (adminUser.image) {
@@ -8157,33 +8743,52 @@
         }
 
         // Emergency Contact Functions
-        function saveEmergencyContact() {
-            const doctorName = document.getElementById('emergencyDoctorName').value.trim();
-            const doctorPhone = document.getElementById('emergencyDoctorPhone').value.trim();
-            
-            if (!doctorName || !doctorPhone) {
-                showMessage('Please enter both doctor name and phone number', 'error');
-                return;
+        async function saveEmergencyContact() {
+            try {
+                const doctorName = document.getElementById('emergencyDoctorName').value.trim();
+                const doctorPhone = document.getElementById('emergencyDoctorPhone').value.trim();
+                
+                if (!doctorName || !doctorPhone) {
+                    showMessage('Please enter both doctor name and phone number', 'error');
+                    return;
+                }
+                
+                const emergencySettings = {
+                    emergencyDoctorName: doctorName,
+                    emergencyDoctorPhone: doctorPhone,
+                    updatedAt: new Date().toISOString()
+                };
+                
+                // Save to database via API
+                await api.updateSettings(emergencySettings);
+                
+                showMessage('✅ Emergency contact saved successfully!');
+            } catch (error) {
+                console.error('Error saving emergency contact:', error);
+                showMessage('Failed to save emergency contact. Please try again.', 'error');
             }
-            
-            const emergencySettings = {
-                doctorName: doctorName,
-                doctorPhone: doctorPhone,
-                updatedAt: new Date().toISOString()
-            };
-            
-            localStorage.setItem('emergencySettings', JSON.stringify(emergencySettings));
-            showMessage('✅ Emergency contact saved successfully!');
         }
 
-        function loadEmergencyContact() {
-            const emergencySettings = JSON.parse(localStorage.getItem('emergencySettings') || '{}');
-            
-            if (emergencySettings.doctorName) {
-                document.getElementById('emergencyDoctorName').value = emergencySettings.doctorName;
-            }
-            if (emergencySettings.doctorPhone) {
-                document.getElementById('emergencyDoctorPhone').value = emergencySettings.doctorPhone;
+        async function loadEmergencyContact() {
+            try {
+                // Load emergency contact from API
+                const apiSettings = await api.getSettings();
+                
+                if (apiSettings.emergencyDoctorName) {
+                    document.getElementById('emergencyDoctorName').value = apiSettings.emergencyDoctorName;
+                }
+                if (apiSettings.emergencyDoctorPhone) {
+                    document.getElementById('emergencyDoctorPhone').value = apiSettings.emergencyDoctorPhone;
+                }
+            } catch (error) {
+                console.warn('Error loading emergency contact from API:', error);
+                // Use default values if API fails
+                if (settings.emergencyDoctorName) {
+                    document.getElementById('emergencyDoctorName').value = settings.emergencyDoctorName;
+                }
+                if (settings.emergencyDoctorPhone) {
+                    document.getElementById('emergencyDoctorPhone').value = settings.emergencyDoctorPhone;
+                }
             }
         }
 
@@ -8248,8 +8853,11 @@
             }
         }
 
-        // Trigger notification when post is approved
-        function approvePost(postId) {
+        // OLD FUNCTION - REMOVED: This was using localStorage only
+        // The correct async approvePost function is defined at line 5892
+        // This function is kept for reference but should not be used
+        function approvePostOldLocalStorageOnly(postId) {
+            console.warn('⚠️ Old approvePost function called - this should not happen!');
             const postIndex = posts.findIndex(p => p.id === postId);
             if (postIndex !== -1) {
                 posts[postIndex].approved = true;
@@ -8360,9 +8968,10 @@
             if (sectionId === 'hotels' && typeof loadHotelsTable === 'function') {
                 loadHotelsTable();
             }
-            if (sectionId === 'itinerary' && typeof loadItineraryTable === 'function') {
-                loadItineraryTable();
-            }
+            // Note: loadItineraryTable is already called above at line 5623, no need to call again
+            // if (sectionId === 'itinerary' && typeof loadItineraryTable === 'function') {
+            //     loadItineraryTable();
+            // }
             
             // Load room pairs if roomPairs section
             if (sectionId === 'roomPairs') {
@@ -8795,6 +9404,44 @@
                 // Continue with existing vehicles array
             }
             
+            // Load check-in data from API for all vehicles with error handling
+            if (typeof api !== 'undefined' && api.getCheckIns) {
+                for (const vehicle of vehicles) {
+                    try {
+                        const apiData = await api.getCheckIns(vehicle.id);
+                        if (apiData) {
+                            if (!checkInData[vehicle.id]) {
+                                checkInData[vehicle.id] = { checkedIn: [], active: false };
+                            }
+                            // Update check-in data from API response
+                            if (apiData.checkedIn !== undefined) {
+                                checkInData[vehicle.id].checkedIn = apiData.checkedIn || [];
+                            }
+                            // Check-in is active if vehicle has travelers (API returns active: true/false)
+                            // Default to true if vehicle has allocated travelers, false otherwise
+                            const hasTravelers = travelers.filter(t => t.vehicleId == vehicle.id).length > 0;
+                            checkInData[vehicle.id].active = apiData.active !== undefined ? apiData.active : hasTravelers;
+                            checkInData[vehicle.id].apiSynced = true;
+                        }
+                    } catch (error) {
+                        console.warn(`Could not load check-ins for vehicle ${vehicle.id}:`, error);
+                        // Set default active status based on whether vehicle has travelers
+                        const hasTravelers = travelers.filter(t => t.vehicleId == vehicle.id).length > 0;
+                        if (!checkInData[vehicle.id]) {
+                            checkInData[vehicle.id] = { checkedIn: [], active: hasTravelers };
+                        } else {
+                            checkInData[vehicle.id].active = hasTravelers;
+                        }
+                    }
+                }
+                // Save to localStorage with error handling
+                try {
+                    // Check-in data is stored in database only, not localStorage
+                } catch (error) {
+                    console.error('❌ Error loading check-in data:', error);
+                }
+            }
+            
             if (vehicles.length === 0) {
                 table.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 40px;">No vehicles added yet. Click "+ Add Vehicle" to get started.</td></tr>';
                 return;
@@ -8830,8 +9477,15 @@
                         </span>
                     </td>
                     <td>
-                        <div style="font-weight: 600; color: ${checkedInCount === allocatedCount && allocatedCount > 0 ? '#28a745' : '#ff9800'}; cursor: pointer; text-decoration: underline;" onclick="viewCheckInReport(${vehicle.id})" title="Click to view Check-In Report">
-                            ${checkedInCount}/${allocatedCount}
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="font-weight: 600; color: ${checkedInCount === allocatedCount && allocatedCount > 0 ? '#28a745' : '#ff9800'}; cursor: pointer; text-decoration: underline;" onclick="viewCheckInReport(${vehicle.id})" title="Click to view Check-In Report">
+                                ${checkedInCount}/${allocatedCount}
+                            </div>
+                            ${allocatedCount > 0 ? `
+                                <span style="padding: 3px 8px; background: ${checkIn.active !== false ? '#4caf50' : '#9e9e9e'}; color: white; border-radius: 10px; font-size: 0.75rem; font-weight: 600;" title="${checkIn.active !== false ? 'Check-In Active' : 'Check-In Inactive'}">
+                                    ${checkIn.active !== false ? '✓ Active' : '○ Inactive'}
+                                </span>
+                            ` : ''}
                         </div>
                     </td>
                     <td>
@@ -8974,9 +9628,32 @@
         window.populateGroupLeadersDropdown = populateGroupLeadersDropdown;
 
         async function editVehicle(vehicle) {
+            if (!vehicle || !vehicle.id) {
+                console.error('❌ Invalid vehicle data:', vehicle);
+                return;
+            }
+            
+            console.log('✏️ Editing vehicle:', vehicle);
+            
+            // Set ID FIRST before resetting form to ensure it's preserved
+            const idField = document.getElementById('vehicleId');
+            if (idField) {
+                idField.value = String(vehicle.id); // Ensure it's a string
+                console.log('✅ Set vehicle ID to:', vehicle.id, '(type:', typeof idField.value, ')');
+            }
+            
+            // Reset form AFTER setting ID (but hidden fields aren't affected by reset)
+            const form = document.querySelector('#vehicleModal form');
+            if (form) {
+                form.reset();
+                // Re-set the ID after reset to ensure it's not cleared
+                if (idField) {
+                    idField.value = String(vehicle.id);
+                }
+            }
+            
             document.getElementById('vehicleModal').style.display = 'block';
             document.getElementById('vehicleModalTitle').textContent = 'Edit Vehicle';
-            document.getElementById('vehicleId').value = vehicle.id;
             document.getElementById('vehicleName').value = vehicle.name;
             document.getElementById('vehicleType').value = vehicle.type;
             document.getElementById('vehicleCapacity').value = vehicle.capacity;
@@ -8991,7 +9668,24 @@
         window.editVehicle = editVehicle;
 
         function closeVehicleModal() {
-            document.getElementById('vehicleModal').style.display = 'none';
+            const modal = document.getElementById('vehicleModal');
+            if (modal) {
+                modal.style.display = 'none';
+                // Reset form and clear ID AFTER modal is closed
+                const form = modal.querySelector('form');
+                if (form) {
+                    form.reset();
+                }
+                const idField = document.getElementById('vehicleId');
+                if (idField) {
+                    idField.value = '';
+                }
+                // Reset modal title
+                const title = document.getElementById('vehicleModalTitle');
+                if (title) {
+                    title.textContent = 'Add Vehicle';
+                }
+            }
         }
         window.closeVehicleModal = closeVehicleModal;
 
@@ -8999,7 +9693,12 @@
         async function handleVehicleSubmit(event) {
             event.preventDefault();
             
-            const id = document.getElementById('vehicleId').value;
+            const idField = document.getElementById('vehicleId');
+            const id = idField ? String(idField.value).trim() : '';
+            
+            // Debug logging
+            console.log('📤 Submitting vehicle form. ID field value:', id, 'Type:', typeof id, 'Is valid number:', !isNaN(parseInt(id)));
+            
             const name = document.getElementById('vehicleName').value;
             const type = document.getElementById('vehicleType').value;
             const capacity = parseInt(document.getElementById('vehicleCapacity').value);
@@ -9011,6 +9710,10 @@
             const status = document.getElementById('vehicleStatus').value;
             const notes = document.getElementById('vehicleNotes').value;
             
+            // Get driver info if available
+            const driver = document.getElementById('vehicleDriver')?.value || '';
+            const driverPhone = document.getElementById('vehicleDriverPhone')?.value || '';
+            
             const vehicleData = {
                 name,
                 type,
@@ -9018,17 +9721,25 @@
                 regNo,
                 groupLeaderEmail,
                 groupLeaderName,
+                driver: driver,
+                driverPhone: driverPhone,
                 color,
                 status,
-                notes,
-                createdAt: new Date().toISOString()
+                notes
             };
             
+            console.log('📤 Sending vehicle data:', vehicleData);
+            
             try {
-            if (id) {
+            // Improved ID validation - check if ID exists and is a valid positive integer
+            const parsedId = parseInt(id);
+            const isValidId = id !== '' && !isNaN(parsedId) && parsedId > 0;
+            
+            if (isValidId) {
                     // Update existing vehicle via API
+                    console.log('📝 Updating vehicle with ID:', parsedId);
                     if (typeof api !== 'undefined' && api.updateVehicle) {
-                        await api.updateVehicle(parseInt(id), vehicleData);
+                        await api.updateVehicle(parsedId, vehicleData);
                         // Clear cache and reload
                         if (api.clearCacheFor) {
                             api.clearCacheFor('vehicles');
@@ -9039,15 +9750,19 @@
                         throw new Error('API not available');
                 }
             } else {
+                    // Add new vehicle - ID is empty or invalid
+                    console.log('➕ Creating new vehicle (ID is empty or invalid)');
                     // Add new vehicle via API
                     if (typeof api !== 'undefined' && api.createVehicle) {
-                        await api.createVehicle(vehicleData);
+                        console.log('📤 Creating vehicle with data:', vehicleData);
+                        const response = await api.createVehicle(vehicleData);
+                        console.log('✅ Vehicle creation response:', response);
                         // Clear cache and reload
                         if (api.clearCacheFor) {
                             api.clearCacheFor('vehicles');
                         }
                         vehicles = await api.getVehicles();
-                showMessage('Vehicle added successfully!');
+                        showMessage('Vehicle added successfully!');
                     } else {
                         throw new Error('API not available');
                     }
@@ -9093,9 +9808,14 @@
         window.deleteVehicle = deleteVehicle;
 
         function clearCheckIns(vehicleId) {
+            console.log('🔘 Button clicked: Clear Check-Ins');
+            console.log(`🔘 Vehicle ID: ${vehicleId}`);
             if (confirm('Clear all check-ins for this vehicle? This will reset the check-in list.')) {
+                console.log('✅ User confirmed - proceeding with check-in activation...');
                 clearCheckIn(vehicleId);
                 loadVehiclesTable();
+            } else {
+                console.log('❌ User cancelled check-in activation');
             }
         }
 
@@ -9305,8 +10025,28 @@
             
             document.getElementById('hotelFloors').value = hotel.total_floors || hotel.floors || '';
             document.getElementById('hotelRooms').value = hotel.total_rooms || hotel.rooms || '';
-            document.getElementById('hotelCheckIn').value = hotel.check_in_date || hotel.checkIn || '';
-            document.getElementById('hotelCheckOut').value = hotel.check_out_date || hotel.checkOut || '';
+            
+            // Format dates for date input fields (must be yyyy-MM-dd format)
+            const formatDateForInput = (dateValue) => {
+                if (!dateValue) return '';
+                // If it's already in yyyy-MM-dd format, return as is
+                if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+                    return dateValue;
+                }
+                // Try to parse and format
+                try {
+                    const date = new Date(dateValue);
+                    if (!isNaN(date.getTime())) {
+                        return date.toISOString().split('T')[0]; // Returns yyyy-MM-dd
+                    }
+                } catch (e) {
+                    console.warn('Could not parse date:', dateValue, e);
+                }
+                return '';
+            };
+            
+            document.getElementById('hotelCheckIn').value = formatDateForInput(hotel.check_in_date || hotel.checkIn);
+            document.getElementById('hotelCheckOut').value = formatDateForInput(hotel.check_out_date || hotel.checkOut);
             document.getElementById('hotelAddress').value = hotel.address || '';
             document.getElementById('hotelContact').value = hotel.phone || hotel.contact || '';
             document.getElementById('hotelNotes').value = hotel.notes || '';
@@ -9818,30 +10558,51 @@
 
         // ==================== VEHICLE ALLOTMENT FUNCTIONS ====================
 
-        function populateVehicleAllotmentDateSelect() {
+        async function populateVehicleAllotmentDateSelect() {
             const select = document.getElementById('vehicleAllotmentDateSelect');
             if (!select) return;
             
-            // Get itinerary days
-            const itinerary = JSON.parse(localStorage.getItem('itinerary') || '[]');
+            // Try to load fresh itinerary from API first
+            try {
+                if (typeof api !== 'undefined' && api.getItinerary) {
+                    const apiItinerary = await api.getItinerary();
+                    if (apiItinerary && apiItinerary.length > 0) {
+                        itinerary = apiItinerary.map(day => ({
+                            ...day,
+                            dateObj: day.dateObj ? new Date(day.dateObj) : (day.date ? new Date(day.date) : new Date())
+                        }));
+                        localStorage.setItem('itinerary', JSON.stringify(itinerary));
+                    }
+                }
+            } catch (error) {
+                console.warn('Could not load itinerary from API, using cached data:', error);
+            }
             
-            if (itinerary.length === 0) {
-                select.innerHTML = '<option value="">No itinerary days available</option>';
+            // Use current itinerary array (from API or cached)
+            if (!itinerary || itinerary.length === 0) {
+                select.innerHTML = '<option value="">No itinerary days available. Please add days in Itinerary section.</option>';
                 return;
             }
             
             // Sort by day number
-            const sortedDays = [...itinerary].sort((a, b) => a.day - b.day);
+            const sortedDays = [...itinerary].sort((a, b) => (a.day || 0) - (b.day || 0));
             
             let options = '<option value="">Select Day</option>';
             sortedDays.forEach(day => {
-                options += `<option value="${day.date}">Day ${day.day} - ${day.date} - ${day.place}</option>`;
+                const dateObj = day.dateObj ? new Date(day.dateObj) : (day.date ? new Date(day.date) : null);
+                const isoDate = dateObj && !isNaN(dateObj.getTime()) ? dateObj.toISOString().split('T')[0] : '';
+                const displayDate = dateObj && !isNaN(dateObj.getTime())
+                    ? dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+                    : (day.date || 'Date TBD');
+                const dayNum = day.day || '';
+                const place = day.place || '';
+                options += `<option value="${isoDate || displayDate}">Day ${dayNum} - ${displayDate} - ${place}</option>`;
             });
             
             select.innerHTML = options;
         }
 
-        function loadVehicleAllotmentGrid() {
+        async function loadVehicleAllotmentGrid() {
             const date = document.getElementById('vehicleAllotmentDateSelect').value;
             const container = document.getElementById('vehicleAllotmentGridContainer');
             
@@ -9849,10 +10610,32 @@
                 container.innerHTML = '<div style="text-align: center; padding: 40px; color: #666;">Please select a day</div>';
                 return;
             }
-            
-            // Get vehicle allotments for the selected date
-            const vehicleAllotments = JSON.parse(localStorage.getItem('vehicleAllotments') || '{}');
-            const dateAllotments = vehicleAllotments[date] || {};
+
+            container.innerHTML = '<div style="text-align: center; padding: 30px; color: #666;">Loading vehicle assignments...</div>';
+
+            // Load existing allotments for the date from API
+            let allotmentsForDate = [];
+            if (typeof api !== 'undefined' && api.getVehicleAllotments) {
+                try {
+                    allotmentsForDate = await api.getVehicleAllotments({ date });
+                    vehicleAllotmentsByDate[date] = allotmentsForDate;
+                } catch (err) {
+                    console.error('❌ Could not load vehicle allotments from API:', err);
+                }
+            } else if (vehicleAllotmentsByDate[date]) {
+                allotmentsForDate = vehicleAllotmentsByDate[date];
+            }
+
+            const allotmentMap = {};
+            if (Array.isArray(allotmentsForDate)) {
+                allotmentsForDate.forEach(a => {
+                    const travelerId = a.traveler_id ?? a.travelerId;
+                    const vehicleId = a.vehicle_id ?? a.vehicleId;
+                    if (travelerId) {
+                        allotmentMap[travelerId] = vehicleId;
+                    }
+                });
+            }
             
             // Get active vehicles
             const activeVehicles = vehicles.filter(v => v.status === 'Active');
@@ -9878,8 +10661,8 @@
             html += '</tr></thead><tbody>';
             
             sortedTravelers.forEach(traveler => {
-                const allotment = dateAllotments[traveler.id] || {};
-                const allocatedVehicleId = allotment.vehicleId || '';
+                // Prefer day-wise assignment; fall back to traveler's base vehicle_id
+                const allocatedVehicleId = allotmentMap[traveler.id] ?? traveler.vehicleId ?? traveler.vehicle_id ?? '';
                 
                 html += '<tr>';
                 html += `<td style="padding: 10px; border: 1px solid #ddd; text-align: center; color: var(--saffron); font-weight: 600;">${traveler.tirthId || '-'}</td>`;
@@ -9905,7 +10688,7 @@
             container.innerHTML = html;
         }
 
-        function saveVehicleAllotments() {
+        async function saveVehicleAllotments() {
             const date = document.getElementById('vehicleAllotmentDateSelect').value;
             
             if (!date) {
@@ -9913,29 +10696,113 @@
                 return;
             }
             
-            // Get existing allotments
-            const vehicleAllotments = JSON.parse(localStorage.getItem('vehicleAllotments') || '{}');
-            const allotments = {};
+            // Check if API is available
+            if (typeof api === 'undefined' || !api.saveVehicleAllotments) {
+                showMessage('❌ Backend API not available. Cannot save vehicle assignments.', 'error');
+                console.error('❌ API not available - cannot save to database');
+                return;
+            }
             
             // Collect allocations from form
+            const assignments = [];
             travelers.forEach(traveler => {
                 const vehicleSelect = document.getElementById(`vehicle-${traveler.id}`);
                 if (vehicleSelect && vehicleSelect.value) {
-                    allotments[traveler.id] = {
-                        vehicleId: vehicleSelect.value
-                    };
+                    assignments.push({
+                        travelerId: traveler.id,
+                        vehicleId: parseInt(vehicleSelect.value)
+                    });
                 }
             });
             
-            // Save to the specific date
-            vehicleAllotments[date] = allotments;
-            localStorage.setItem('vehicleAllotments', JSON.stringify(vehicleAllotments));
+            // Enhanced logging for vehicle allotments
+            console.log('✅ ========================================');
+            console.log('✅ SAVING VEHICLE ALLOTMENTS TO DATABASE');
+            console.log('✅ ========================================');
+            console.log('📅 Date:', date);
+            console.log('📊 Total allotments:', assignments.length);
             
-            showMessage('✅ Vehicle allotments saved successfully!');
-            console.log('Vehicle allotments saved:', vehicleAllotments);
+            // Show summary by vehicle
+            const vehicleSummary = {};
+            assignments.forEach(data => {
+                const vehicleId = data.vehicleId;
+                if (vehicleId) {
+                    if (!vehicleSummary[vehicleId]) {
+                        vehicleSummary[vehicleId] = [];
+                    }
+                    const travelerId = parseInt(data.travelerId);
+                    const traveler = travelers.find(t => t.id == travelerId);
+                    vehicleSummary[vehicleId].push({
+                        id: travelerId,
+                        name: traveler ? traveler.name : `Traveler ${travelerId}`,
+                        email: traveler ? traveler.email : ''
+                    });
+                }
+            });
+            
+            console.log('🚌 Vehicle Assignments Summary:');
+            if (Object.keys(vehicleSummary).length === 0) {
+                console.log('   ⚠️ No vehicles assigned');
+                // If nothing selected, clear assignments for this date
+                try {
+                    await api.deleteVehicleAllotments({ date });
+                    vehicleAllotmentsByDate[date] = [];
+                    await loadVehicleAllotmentGrid();
+                    showMessage('✅ Cleared all vehicle assignments for this date');
+                } catch (err) {
+                    console.error('❌ Failed clearing vehicle assignments:', err);
+                    showMessage('❌ Failed to clear vehicle assignments for this date', 'error');
+                }
+                return;
+            } else {
+                // Get vehicles array safely
+                const vehiclesList = (typeof vehicles !== 'undefined' && Array.isArray(vehicles)) 
+                    ? vehicles 
+                    : ((typeof window.vehicles !== 'undefined' && Array.isArray(window.vehicles))
+                        ? window.vehicles
+                        : []);
+                
+                Object.entries(vehicleSummary).forEach(([vehicleId, travelersList]) => {
+                    const vehicle = vehiclesList.find(v => v.id == vehicleId || v.id === parseInt(vehicleId));
+                    const vehicleName = vehicle ? vehicle.name : `Vehicle ${vehicleId}`;
+                    console.log(`   🚌 ${vehicleName} (ID: ${vehicleId}): ${travelersList.length} traveler(s)`);
+                    travelersList.forEach(t => {
+                        console.log(`      - ${t.name} (${t.email})`);
+                    });
+                });
+            }
+            
+            try {
+                await api.saveVehicleAllotments(date, assignments, true);
+                vehicleAllotmentsByDate[date] = assignments.map(a => ({
+                    date,
+                    traveler_id: a.travelerId,
+                    vehicle_id: a.vehicleId
+                }));
+                console.log('✅ Vehicle assignments saved to database successfully');
+                showMessage('✅ Vehicle allotments saved to database successfully!');
+                await loadVehicleAllotmentGrid();
+                
+                // Clear cache to refresh data
+                if (api.clearCacheFor) {
+                    api.clearCacheFor('/travelers');
+                    api.clearCacheFor('/travelers/public');
+                    api.clearCacheFor('/vehicles/allotments');
+                }
+                
+                // Reload travelers if function exists
+                if (typeof loadTravelersTable === 'function') {
+                    loadTravelersTable();
+                }
+            } catch (error) {
+                console.error('❌ Error saving vehicle assignments:', error);
+                showMessage('❌ Failed to save vehicle assignments. Please try again.', 'error');
+            }
+            
+            console.log('✅ ========================================');
         }
 
-        function clearAllVehicleAllotments() {
+        async function clearAllVehicleAllotments() {
             const date = document.getElementById('vehicleAllotmentDateSelect').value;
             
             if (!date) {
@@ -9943,14 +10810,37 @@
                 return;
             }
             
-            if (confirm('Clear all vehicle assignments for this day? This cannot be undone.')) {
-                travelers.forEach(traveler => {
-                    const vehicleSelect = document.getElementById(`vehicle-${traveler.id}`);
-                    if (vehicleSelect) {
-                        vehicleSelect.value = '';
-                    }
-                });
-                showMessage('🔄 All vehicle assignments cleared');
+            if (!confirm('Clear all vehicle assignments? This will remove vehicle assignments from the database. This cannot be undone.')) {
+                return;
+            }
+            
+            // Check if API is available
+            if (typeof api === 'undefined' || !api.deleteVehicleAllotments) {
+                showMessage('❌ Backend API not available. Cannot clear vehicle assignments.', 'error');
+                return;
+            }
+            
+            try {
+                const result = await api.deleteVehicleAllotments({ date });
+                console.log('✅ Vehicle allotments deleted:', result);
+                vehicleAllotmentsByDate[date] = [];
+                await loadVehicleAllotmentGrid();
+                
+                // Clear cache and reload
+                if (api.clearCacheFor) {
+                    api.clearCacheFor('/travelers');
+                    api.clearCacheFor('/travelers/public');
+                    api.clearCacheFor('/vehicles/allotments');
+                }
+                if (typeof loadTravelersTable === 'function') {
+                    loadTravelersTable();
+                }
+                
+                console.log('✅ All vehicle assignments cleared from database for selected date');
+                showMessage('✅ All vehicle assignments cleared for selected date');
+            } catch (error) {
+                console.error('❌ Error clearing vehicle assignments:', error);
+                showMessage('❌ Failed to clear some vehicle assignments. Check console for details.', 'error');
             }
         }
 
@@ -9974,14 +10864,33 @@
                         return;
                     }
                     
-                    const vehicleAllotments = JSON.parse(localStorage.getItem('vehicleAllotments') || '{}');
+                    // Check if API is available
+                    if (typeof api === 'undefined' || !api.saveVehicleAllotments) {
+                        showMessage('❌ Backend API not available. Cannot save vehicle assignments.', 'error');
+                        return;
+                    }
+                    
                     let successCount = 0;
                     let errorCount = 0;
+                    const assignmentsByDate = {};
+
+                    const normalizeDateFromSheet = (value) => {
+                        if (!value) return null;
+                        const parsed = new Date(value);
+                        if (isNaN(parsed.getTime())) return null;
+                        return parsed.toISOString().split('T')[0];
+                    };
                     
                     rows.forEach(row => {
                         try {
                             // Validate required fields
                             if (!row['Date'] || !row['Traveler Email'] || !row['Vehicle Name']) {
+                                errorCount++;
+                                return;
+                            }
+
+                            const normalizedDate = normalizeDateFromSheet(row['Date']);
+                            if (!normalizedDate) {
                                 errorCount++;
                                 return;
                             }
@@ -10000,25 +10909,53 @@
                                 return;
                             }
                             
-                            // Add allocation
-                            const date = row['Date'];
-                            if (!vehicleAllotments[date]) {
-                                vehicleAllotments[date] = {};
+                            if (!assignmentsByDate[normalizedDate]) {
+                                assignmentsByDate[normalizedDate] = [];
                             }
-                            vehicleAllotments[date][traveler.id] = {
+                            assignmentsByDate[normalizedDate].push({
+                                travelerId: traveler.id,
                                 vehicleId: vehicle.id
-                            };
+                            });
                             successCount++;
-                            
                         } catch (err) {
                             errorCount++;
                         }
                     });
                     
-                    // Save to localStorage
-                    localStorage.setItem('vehicleAllotments', JSON.stringify(vehicleAllotments));
-                    
-                    showMessage(`✅ Bulk upload complete! ${successCount} allocations added, ${errorCount} errors`, 'success');
+                    const savePromises = Object.entries(assignmentsByDate).map(([dateStr, assignments]) => {
+                        return api.saveVehicleAllotments(dateStr, assignments, true).then(() => {
+                            vehicleAllotmentsByDate[dateStr] = assignments.map(a => ({
+                                date: dateStr,
+                                traveler_id: a.travelerId,
+                                vehicle_id: a.vehicleId
+                            }));
+                        }).catch(err => {
+                            console.error(`❌ Failed saving allotments for ${dateStr}:`, err);
+                            errorCount += assignments.length;
+                        });
+                    });
+
+                    Promise.all(savePromises).then(() => {
+                        // Clear cache and reload
+                        if (api.clearCacheFor) {
+                            api.clearCacheFor('/travelers');
+                            api.clearCacheFor('/travelers/public');
+                            api.clearCacheFor('/vehicles/allotments');
+                        }
+                        if (typeof loadTravelersTable === 'function') {
+                            loadTravelersTable();
+                        }
+                        loadVehicleAllotmentGrid();
+
+                        if (errorCount === 0) {
+                            showMessage(`✅ Vehicle allotments updated for ${successCount} traveler(s) across ${Object.keys(assignmentsByDate).length} date(s)`, 'success');
+                        } else {
+                            showMessage(`⚠️ Processed ${successCount} entries, ${errorCount} failed.`, 'error');
+                        }
+                    }).catch(error => {
+                        console.error('Error in bulk upload:', error);
+                        showMessage(`⚠️ Bulk upload completed with errors. ${successCount} saved, ${errorCount} failed.`, 'error');
+                    });
                     
                 } catch (error) {
                     showMessage('❌ Error processing Excel file. Please check the format.', 'error');
@@ -10114,48 +11051,224 @@
 
         // ==================== CHECK-IN MANAGEMENT ====================
         
-        function initializeCheckIn(vehicleId) {
-            if (!checkInData[vehicleId]) {
-                checkInData[vehicleId] = {
-                    active: true,
-                    checkedIn: [],
-                    timestamp: new Date().toISOString()
-                };
-            } else {
-                checkInData[vehicleId].active = true;
-                checkInData[vehicleId].timestamp = new Date().toISOString();
-            }
-            localStorage.setItem('checkInData', JSON.stringify(checkInData));
-            showMessage('Check-in activated for vehicle!');
-        }
-        
-        function clearCheckIn(vehicleId) {
-            if (checkInData[vehicleId]) {
-                checkInData[vehicleId] = {
-                    active: true,  // Activate check-in for travelers
-                    checkedIn: [],
-                    timestamp: new Date().toISOString()
-                };
-                localStorage.setItem('checkInData', JSON.stringify(checkInData));
-                showMessage('Check-in activated! Travelers will be notified.');
-            } else {
-                // Initialize if doesn't exist
-                checkInData[vehicleId] = {
-                    active: true,
-                    checkedIn: [],
-                    timestamp: new Date().toISOString()
-                };
-                localStorage.setItem('checkInData', JSON.stringify(checkInData));
-                showMessage('Check-in activated! Travelers will be notified.');
+        async function initializeCheckIn(vehicleId) {
+            // Clear check-ins via API to activate check-in (database only)
+            try {
+                if (typeof api !== 'undefined' && api.clearVehicleCheckIns) {
+                    await api.clearVehicleCheckIns(vehicleId);
+                    showMessage('✅ Check-in activated for vehicle!');
+                } else {
+                    showMessage('API not available', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to activate check-in:', error);
+                showMessage('❌ Failed to activate check-in. Please try again.', 'error');
             }
         }
         
-        function viewCheckInReport(vehicleId) {
+        async function clearCheckIn(vehicleId) {
+            // Get vehicle name for logging
+            const vehicle = vehicles.find(v => v.id == vehicleId);
+            const vehicleName = vehicle ? vehicle.name : `Vehicle ${vehicleId}`;
+            
+            console.log('🔄 ========================================');
+            console.log('🔄 RESET & ACTIVATE CHECK-IN INITIATED');
+            console.log('🔄 ========================================');
+            console.log(`🚌 Vehicle ID: ${vehicleId}`);
+            console.log(`🚌 Vehicle Name: ${vehicleName}`);
+            console.log(`🕐 Timestamp: ${new Date().toISOString()}`);
+            console.log('🔄 Starting check-in activation process...');
+            
+            let apiSuccess = false;
+            let retryCount = 0;
+            const maxRetries = 3;
+            
+            // Try to clear check-ins via API with retry logic
+            while (!apiSuccess && retryCount < maxRetries) {
+                try {
+                    if (typeof api !== 'undefined' && api.clearVehicleCheckIns) {
+                        console.log(`📡 Attempting to clear check-ins via API (Attempt ${retryCount + 1}/${maxRetries})...`);
+                        const response = await api.clearVehicleCheckIns(vehicleId);
+                        console.log('✅ Check-ins cleared via API successfully!');
+                        console.log('📦 API Response:', response);
+                        apiSuccess = true;
+                    } else {
+                        console.warn('⚠️ API not available - api.clearVehicleCheckIns is undefined');
+                        break; // No API available, use localStorage
+                    }
+                } catch (error) {
+                    retryCount++;
+                    console.warn(`⚠️ Attempt ${retryCount} failed to clear check-ins via API:`, error);
+                    console.warn(`⚠️ Error details:`, {
+                        message: error.message,
+                        stack: error.stack
+                    });
+                    if (retryCount < maxRetries) {
+                        // Wait before retry (exponential backoff)
+                        const waitTime = 1000 * retryCount;
+                        console.log(`⏳ Waiting ${waitTime}ms before retry...`);
+                        await new Promise(resolve => setTimeout(resolve, waitTime));
+                    } else {
+                        console.error('❌ Failed to clear check-ins via API after all retries');
+                        console.error('❌ Error details:', error);
+                    }
+                }
+            }
+            
+            // Check-in data is now stored only in database, not localStorage
+            // No need to update localStorage - all data is in database
+            
+            // Broadcast to other tabs/windows (for same browser)
+            if (typeof BroadcastChannel !== 'undefined') {
+                try {
+                    const channel = new BroadcastChannel('yatra-checkin');
+                    const activationMessage = { 
+                        type: 'checkin-activated', 
+                        vehicleId, 
+                        timestamp: new Date().toISOString(),
+                        apiSynced: apiSuccess
+                    };
+                    channel.postMessage(activationMessage);
+                    console.log('📢 Broadcasted check-in activation:', activationMessage);
+                } catch (broadcastError) {
+                    console.warn('Could not broadcast check-in activation:', broadcastError);
+                }
+            }
+            
+            // Also trigger a storage event for cross-tab sync (same browser)
+            try {
+                // Force a storage event by setting a temporary value
+                const tempKey = `checkInActivation_${vehicleId}_${Date.now()}`;
+                localStorage.setItem(tempKey, new Date().toISOString());
+                setTimeout(() => localStorage.removeItem(tempKey), 100);
+            } catch (e) {
+                console.warn('Could not trigger storage event:', e);
+            }
+            
+            // Log final status
+            if (apiSuccess) {
+                console.log('✅ ========================================');
+                console.log('✅ CHECK-IN ACTIVATION SUCCESSFUL');
+                console.log('✅ ========================================');
+                console.log(`✅ Vehicle: ${vehicleName} (ID: ${vehicleId})`);
+                console.log(`✅ Check-in is now ACTIVE for travelers`);
+                console.log(`✅ Travelers can now check in for this vehicle`);
+                console.log(`✅ Timestamp: ${new Date().toISOString()}`);
+                console.log('✅ ========================================');
+                showMessage(`✅ Check-in activated for ${vehicleName}! Travelers will be notified.`, 'success');
+            } else {
+                console.warn('⚠️ ========================================');
+                console.warn('⚠️ CHECK-IN ACTIVATION (LOCAL ONLY)');
+                console.warn('⚠️ ========================================');
+                console.warn(`⚠️ Vehicle: ${vehicleName} (ID: ${vehicleId})`);
+                console.warn(`⚠️ API unavailable - check-in activated locally only`);
+                console.warn(`⚠️ Timestamp: ${new Date().toISOString()}`);
+                console.warn('⚠️ ========================================');
+                showMessage(`⚠️ Check-in activated for ${vehicleName} (local only - API unavailable).`, 'warning');
+            }
+            
+            // Also show a more prominent notification
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 80px;
+                right: 20px;
+                background: linear-gradient(135deg, #4caf50, #8bc34a);
+                color: white;
+                border-radius: 12px;
+                padding: 20px;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                z-index: 10000;
+                min-width: 300px;
+                max-width: 400px;
+                animation: slideInRight 0.5s ease;
+                border-left: 4px solid #2e7d32;
+            `;
+            notification.innerHTML = `
+                <div style="font-weight: 600; font-size: 1.1rem; margin-bottom: 8px;">🚌 Check-In Activated!</div>
+                <div style="font-size: 0.9rem; opacity: 0.95;">${vehicleName} - Travelers can now check in</div>
+                ${!apiSuccess ? '<div style="font-size: 0.8rem; opacity: 0.9; margin-top: 5px; color: #ffeb3b;">⚠️ Saved locally (API unavailable)</div>' : ''}
+                <button onclick="this.parentElement.remove()" style="position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.3); border: none; color: white; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: 1.2rem;">✕</button>
+            `;
+            document.body.appendChild(notification);
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                if (notification.parentElement) {
+                    notification.remove();
+                }
+            }, 5000);
+        }
+        
+        async function viewCheckInReport(vehicleId) {
             const vehicle = vehicles.find(v => v.id == vehicleId);
             if (!vehicle) return;
             
-            const allocatedTravelers = travelers.filter(t => t.vehicleId == vehicleId);
-            const checkIn = checkInData[vehicleId] || { checkedIn: [] };
+            // Get allocated travelers - check both vehicleId and vehicle_id field names
+            const allocatedTravelers = travelers.filter(t => 
+                (t.vehicleId == vehicleId) || (t.vehicle_id == vehicleId)
+            );
+            
+            console.log('📊 Check-In Report for Vehicle:', vehicleId);
+            console.log('📊 Allocated travelers:', allocatedTravelers.length);
+            console.log('📊 Travelers list:', travelers.length);
+            if (allocatedTravelers.length === 0) {
+                console.warn('⚠️ No travelers found for vehicle', vehicleId);
+                console.warn('⚠️ Sample traveler structure:', travelers[0]);
+                console.warn('⚠️ Checking vehicle assignments...');
+                travelers.forEach(t => {
+                    if (t.vehicleId || t.vehicle_id) {
+                        console.log('  - Traveler:', t.email, 'vehicleId:', t.vehicleId, 'vehicle_id:', t.vehicle_id);
+                    }
+                });
+            }
+            
+            // Try to load check-ins from API first with retry logic
+            let checkIn = checkInData[vehicleId] || { checkedIn: [], active: false };
+            let apiSuccess = false;
+            let retryCount = 0;
+            const maxRetries = 3;
+            
+            while (!apiSuccess && retryCount < maxRetries) {
+                try {
+                    if (typeof api !== 'undefined' && api.getCheckIns) {
+                        // Clear cache to get fresh data
+                        if (api.clearCacheFor) {
+                            api.clearCacheFor(`/check-ins/vehicle/${vehicleId}`);
+                        }
+                        const apiData = await api.getCheckIns(vehicleId);
+                        console.log('📥 Check-in API data for vehicle', vehicleId, ':', apiData);
+                        if (apiData && apiData.checkedIn !== undefined) {
+                            checkIn.checkedIn = apiData.checkedIn || [];
+                            checkIn.active = apiData.active !== false;
+                            checkIn.apiSynced = true;
+                            // Update local storage
+                            checkInData[vehicleId] = checkIn;
+                            console.log('✅ Updated check-in data:', {
+                                vehicleId,
+                                checkedInCount: checkIn.checkedIn.length,
+                                checkedIn: checkIn.checkedIn
+                            });
+                            try {
+                                // Check-in data is stored in database only, not localStorage
+                            } catch (error) {
+                                console.error('Error loading check-in data:', error);
+                            }
+                            apiSuccess = true;
+                        }
+                    } else {
+                        break; // No API available
+                    }
+                } catch (error) {
+                    retryCount++;
+                    console.warn(`⚠️ Attempt ${retryCount} to load check-ins from API failed:`, error);
+                    if (retryCount < maxRetries) {
+                        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+                    } else {
+                        console.warn('Could not load check-ins from API after retries, using local data');
+                    }
+                }
+            }
             
             const checkedInCount = checkIn.checkedIn.length;
             const totalCount = allocatedTravelers.length;
@@ -10220,7 +11333,7 @@
                     </div>
                     
                     <div style="margin-top: 30px; display: flex; gap: 10px; justify-content: center;">
-                        <button onclick="clearCheckIn(${vehicleId}); closeCheckInReportModal(); loadVehiclesTable();" style="padding: 12px 30px; background: #4caf50; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                        <button onclick="console.log('🔘 Modal Button Clicked: Reset & Activate Check-In'); console.log('🔘 Vehicle ID: ${vehicleId}'); clearCheckIn(${vehicleId}); closeCheckInReportModal(); loadVehiclesTable();" style="padding: 12px 30px; background: #4caf50; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
                             🔄 Reset & Activate Check-In
                         </button>
                         <button onclick="closeCheckInReportModal()" style="padding: 12px 30px; background: #9e9e9e; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
@@ -10500,9 +11613,46 @@
         let announcementCheckInterval = null;
 
         // Populate announcement recipient dropdowns
-        function populateAnnouncementRecipients() {
-            const travelers = safeGetFromStorage('authorizedTravelers', []);
-            const vehicles = safeGetFromStorage('vehicles', []);
+        async function populateAnnouncementRecipients() {
+            console.log('📋 Populating announcement recipients...');
+            
+            // Try to load from API if localStorage is empty or data seems outdated
+            let travelers = safeGetFromStorage('authorizedTravelers', []);
+            let vehicles = safeGetFromStorage('vehicles', []);
+            
+            // Load travelers from API if needed
+            if ((!travelers || travelers.length === 0) && typeof api !== 'undefined' && api.getTravelers) {
+                console.log('📥 Loading travelers from API...');
+                try {
+                    travelers = await api.getTravelers();
+                    if (travelers && travelers.length > 0) {
+                        localStorage.setItem('authorizedTravelers', JSON.stringify(travelers));
+                        console.log(`✅ Loaded ${travelers.length} travelers from API`);
+                    }
+                } catch (error) {
+                    console.error('❌ Error loading travelers:', error);
+                }
+            }
+            
+            // Load vehicles from API if needed
+            if ((!vehicles || vehicles.length === 0) && typeof api !== 'undefined' && api.getVehicles) {
+                console.log('📥 Loading vehicles from API...');
+                try {
+                    vehicles = await api.getVehicles();
+                    if (vehicles && vehicles.length > 0) {
+                        localStorage.setItem('vehicles', JSON.stringify(vehicles));
+                        console.log(`✅ Loaded ${vehicles.length} vehicles from API`);
+                    }
+                } catch (error) {
+                    console.error('❌ Error loading vehicles:', error);
+                }
+            }
+            
+            // Ensure we have arrays
+            if (!Array.isArray(travelers)) travelers = [];
+            if (!Array.isArray(vehicles)) vehicles = [];
+            
+            console.log(`📊 Using ${travelers.length} travelers and ${vehicles.length} vehicles for dropdowns`);
             
             // Populate specific traveler dropdown
             const specificTravelerSelect = document.getElementById('specificTravelerId');
@@ -10515,21 +11665,25 @@
                     option.setAttribute('data-name', traveler.name);
                     specificTravelerSelect.appendChild(option);
                 });
+                console.log(`✅ Populated ${travelers.length} travelers in dropdown`);
             }
             
             // Populate group leader dropdown
             const groupLeaderSelect = document.getElementById('specificGroupLeaderId');
             if (groupLeaderSelect) {
                 groupLeaderSelect.innerHTML = '<option value="">Choose a group leader</option>';
+                const uniqueLeaders = new Map();
                 vehicles.forEach(vehicle => {
-                    if (vehicle.groupLeaderEmail) {
+                    if (vehicle.groupLeaderEmail && !uniqueLeaders.has(vehicle.groupLeaderEmail)) {
+                        uniqueLeaders.set(vehicle.groupLeaderEmail, vehicle.groupLeaderName);
                         const option = document.createElement('option');
                         option.value = vehicle.groupLeaderEmail;
-                        option.textContent = `${vehicle.groupLeaderName} - ${vehicle.name}`;
+                        option.textContent = `${vehicle.groupLeaderName || 'Unknown'} - ${vehicle.name || 'Unknown Vehicle'}`;
                         option.setAttribute('data-name', vehicle.groupLeaderName);
                         groupLeaderSelect.appendChild(option);
                     }
                 });
+                console.log(`✅ Populated ${uniqueLeaders.size} group leaders in dropdown`);
             }
             
             // Populate vehicle dropdown
@@ -10539,17 +11693,42 @@
                 vehicles.forEach(vehicle => {
                     const option = document.createElement('option');
                     option.value = vehicle.id;
-                    option.textContent = `${vehicle.name} (${vehicle.groupLeaderName})`;
+                    option.textContent = `${vehicle.name || 'Unknown'} (${vehicle.groupLeaderName || 'N/A'})`;
                     vehicleSelect.appendChild(option);
                 });
+                console.log(`✅ Populated ${vehicles.length} vehicles in dropdown`);
             }
         }
 
         // Handle recipient type change
-        function handleRecipientChange() {
+        async function handleRecipientChange() {
             const recipientType = document.getElementById('announcementRecipient').value;
-            const travelers = JSON.parse(localStorage.getItem('authorizedTravelers') || '[]');
-            const vehicles = JSON.parse(localStorage.getItem('vehicles') || '[]');
+            
+            // Load fresh data if needed
+            let travelers = safeGetFromStorage('authorizedTravelers', []);
+            let vehicles = safeGetFromStorage('vehicles', []);
+            
+            if (travelers.length === 0 && typeof api !== 'undefined' && api.getTravelers) {
+                try {
+                    travelers = await api.getTravelers();
+                    localStorage.setItem('authorizedTravelers', JSON.stringify(travelers));
+                } catch (error) {
+                    console.error('Error loading travelers:', error);
+                }
+            }
+            
+            if (vehicles.length === 0 && typeof api !== 'undefined' && api.getVehicles) {
+                try {
+                    vehicles = await api.getVehicles();
+                    localStorage.setItem('vehicles', JSON.stringify(vehicles));
+                } catch (error) {
+                    console.error('Error loading vehicles:', error);
+                }
+            }
+            
+            // Ensure arrays
+            if (!Array.isArray(travelers)) travelers = [];
+            if (!Array.isArray(vehicles)) vehicles = [];
             
             // Hide all specific selects first
             document.getElementById('specificTravelerSelect').style.display = 'none';
@@ -10560,22 +11739,26 @@
             if (recipientType === 'specific-traveler') {
                 const select = document.getElementById('specificTravelerId');
                 select.innerHTML = '<option value="">Choose a traveler</option>' +
-                    travelers.map(t => `<option value="${t.email}">${t.name} (${t.email})</option>`).join('');
+                    travelers.map(t => `<option value="${t.email || ''}">${t.name || 'Unknown'} (${t.email || 'No email'})</option>`).join('');
                 document.getElementById('specificTravelerSelect').style.display = 'block';
             } else if (recipientType === 'specific-group-leader') {
                 const select = document.getElementById('specificGroupLeaderId');
-                const groupLeaders = vehicles.filter(v => v.groupLeaderEmail).map(v => v.groupLeaderEmail);
-                const uniqueLeaders = [...new Set(groupLeaders)];
+                const groupLeadersMap = new Map();
+                vehicles.forEach(v => {
+                    if (v.groupLeaderEmail && !groupLeadersMap.has(v.groupLeaderEmail)) {
+                        groupLeadersMap.set(v.groupLeaderEmail, v.groupLeaderName);
+                    }
+                });
                 select.innerHTML = '<option value="">Choose a group leader</option>' +
-                    uniqueLeaders.map(email => {
+                    Array.from(groupLeadersMap.entries()).map(([email, name]) => {
                         const traveler = travelers.find(t => t.email === email);
-                        return `<option value="${email}">${traveler ? traveler.name : email} (${email})</option>`;
+                        return `<option value="${email}">${traveler ? traveler.name : (name || email)} (${email})</option>`;
                     }).join('');
                 document.getElementById('specificGroupLeaderSelect').style.display = 'block';
             } else if (recipientType === 'by-vehicle') {
                 const select = document.getElementById('vehicleId');
                 select.innerHTML = '<option value="">Choose a vehicle</option>' +
-                    vehicles.map(v => `<option value="${v.id}">${v.name} (${v.regNo})</option>`).join('');
+                    vehicles.map(v => `<option value="${v.id || ''}">${v.name || 'Unknown'} ${v.regNo ? '(' + v.regNo + ')' : ''}</option>`).join('');
                 document.getElementById('vehicleSelect').style.display = 'block';
             }
         }
@@ -10595,7 +11778,7 @@
         }
 
         // Send announcement
-        function sendAnnouncement() {
+        async function sendAnnouncement() {
             const recipientType = document.getElementById('announcementRecipient').value;
             const message = document.getElementById('announcementMessage').value.trim();
             const displayType = document.querySelector('input[name="displayType"]:checked').value;
@@ -10606,18 +11789,46 @@
                 return;
             }
             
+            // Load fresh data from API if needed
+            let travelers = safeGetFromStorage('authorizedTravelers', []);
+            let vehicles = safeGetFromStorage('vehicles', []);
+            
+            if ((!travelers || travelers.length === 0) && typeof api !== 'undefined' && api.getTravelers) {
+                try {
+                    travelers = await api.getTravelers();
+                    localStorage.setItem('authorizedTravelers', JSON.stringify(travelers));
+                } catch (error) {
+                    console.error('Error loading travelers:', error);
+                    showMessage('Error loading travelers data. Please try again.', 'error');
+                    return;
+                }
+            }
+            
+            if ((!vehicles || vehicles.length === 0) && typeof api !== 'undefined' && api.getVehicles) {
+                try {
+                    vehicles = await api.getVehicles();
+                    localStorage.setItem('vehicles', JSON.stringify(vehicles));
+                } catch (error) {
+                    console.error('Error loading vehicles:', error);
+                }
+            }
+            
+            // Ensure arrays
+            if (!Array.isArray(travelers)) travelers = [];
+            if (!Array.isArray(vehicles)) vehicles = [];
+            
             // Get recipients
             let recipients = [];
             let recipientLabel = '';
             
             if (recipientType === 'all-travelers') {
-                const travelers = JSON.parse(localStorage.getItem('authorizedTravelers') || '[]');
-                recipients = travelers.map(t => t.email);
+                recipients = travelers.filter(t => t.email).map(t => t.email);
                 recipientLabel = 'All Travelers';
+                console.log(`📢 Sending to all ${recipients.length} travelers`);
             } else if (recipientType === 'all-group-leaders') {
-                const vehicles = JSON.parse(localStorage.getItem('vehicles') || '[]');
                 recipients = [...new Set(vehicles.filter(v => v.groupLeaderEmail).map(v => v.groupLeaderEmail))];
                 recipientLabel = 'All Group Leaders';
+                console.log(`📢 Sending to all ${recipients.length} group leaders`);
             } else if (recipientType === 'specific-traveler') {
                 const email = document.getElementById('specificTravelerId').value;
                 if (!email) {
@@ -10661,6 +11872,10 @@
                 id: Date.now(),
                 message: message,
                 recipients: recipients,
+                recipientType: recipientType,
+                recipientValue: recipientType === 'by-vehicle' ? document.getElementById('vehicleId').value : 
+                               (recipientType === 'specific-traveler' ? document.getElementById('specificTravelerId').value :
+                               (recipientType === 'specific-group-leader' ? document.getElementById('specificGroupLeaderId').value : null)),
                 recipientLabel: recipientLabel,
                 displayType: displayType,
                 timingType: timingType,
@@ -10670,18 +11885,23 @@
             
             // Handle timing
             if (timingType === 'instant') {
-                // Send immediately
-                sendAnnouncementNow(announcement);
-                
-                // Save to history
-                announcement.status = 'sent';
-                announcement.sentAt = new Date().toISOString();
-                announcementHistory.unshift(announcement);
-                localStorage.setItem('announcementHistory', JSON.stringify(announcementHistory));
-                
-                loadAnnouncementHistory();
-                showMessage('✅ Announcement sent successfully to ' + recipients.length + ' recipient(s)!');
-                clearAnnouncementForm();
+                // Send immediately via API
+                try {
+                    await sendAnnouncementNow(announcement);
+                    
+                    // Save to history (local for admin panel display)
+                    announcement.status = 'sent';
+                    announcement.sentAt = new Date().toISOString();
+                    announcementHistory.unshift(announcement);
+                    localStorage.setItem('announcementHistory', JSON.stringify(announcementHistory));
+                    
+                    loadAnnouncementHistory();
+                    showMessage('✅ Announcement sent successfully to ' + recipients.length + ' recipient(s)!');
+                    clearAnnouncementForm();
+                } catch (error) {
+                    console.error('Error sending announcement:', error);
+                    showMessage('Error sending announcement. Please try again.', 'error');
+                }
             } else if (timingType === 'time') {
                 const time = document.getElementById('scheduledTime').value;
                 if (!time) {
@@ -10723,20 +11943,39 @@
             }
         }
 
-        // Send announcement immediately
-        function sendAnnouncementNow(announcement) {
-            // Save to localStorage for website to pick up
-            const announcements = JSON.parse(localStorage.getItem('pendingAnnouncements') || '[]');
-            announcements.push({
-                id: announcement.id,
-                message: announcement.message,
-                recipients: announcement.recipients,
-                displayType: announcement.displayType,
-                timestamp: new Date().toISOString()
-            });
-            localStorage.setItem('pendingAnnouncements', JSON.stringify(announcements));
-            
-            console.log('✅ Announcement sent:', announcement.message, 'to', announcement.recipients.length, 'recipients');
+        // Send announcement immediately via API
+        async function sendAnnouncementNow(announcement) {
+            try {
+                // Store recipients as JSON string for complex recipient types
+                let recipientValue = null;
+                if (announcement.recipientType === 'specific-traveler' || 
+                    announcement.recipientType === 'specific-group-leader') {
+                    recipientValue = announcement.recipients[0] || null;
+                } else if (announcement.recipientType === 'by-vehicle' || 
+                          announcement.recipientType === 'specific-vehicle') {
+                    recipientValue = announcement.recipientValue || null;
+                }
+                
+                const announcementData = {
+                    recipientType: announcement.recipientType,
+                    recipientValue: recipientValue,
+                    recipients: announcement.recipients || [],
+                    message: announcement.message || '',
+                    displayType: announcement.displayType || 'notification',
+                    timingType: 'instant',
+                    scheduledTime: null
+                };
+                
+                if (typeof api !== 'undefined' && api.createAnnouncement) {
+                    await api.createAnnouncement(announcementData);
+                    console.log('✅ Announcement sent via API:', announcementData.message, 'to', announcementData.recipients.length, 'recipients');
+                } else {
+                    throw new Error('API not available');
+                }
+            } catch (error) {
+                console.error('❌ Error sending announcement via API:', error);
+                throw error;
+            }
         }
 
         // Start announcement checker
@@ -10922,7 +12161,12 @@
         
         // Posts
         window.deletePost = window.deletePost || deletePost;
-        window.approvePost = window.approvePost || approvePost;
+        // approvePost is already assigned at line 5971 - don't override with old function
+        if (!window.approvePost) {
+            console.error('❌ approvePost not found on window! This should not happen.');
+        } else {
+            console.log('✅ approvePost correctly assigned to window');
+        }
         window.viewPost = window.viewPost || viewPost;
         window.approvePostFromFullscreen = window.approvePostFromFullscreen || approvePostFromFullscreen;
         
